@@ -92,9 +92,13 @@
  
  */
 
-#include <LCD5110_Basic.h>
- 
-LCD5110 myGLCD(8,9,10,11,12);
+//#include <LCD5110_Basic.h>
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
+//LCD5110 myGLCD(8,9,10,11,12);
+LiquidCrystal_I2C lcd(0x3f,20,4);
+
 extern uint8_t SmallFont[];
 extern uint8_t MediumNumbers[];
 extern uint8_t BigNumbers[];
@@ -124,7 +128,7 @@ int fuenfmindrehen;    //drehgeber Werte 5 Minutensprünge
 #include <DallasTemperature.h>
 
 // Data wire is plugged into port 5 on the Arduino
-#define ONE_WIRE_BUS 5
+#define ONE_WIRE_BUS 6
 
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
@@ -145,8 +149,8 @@ DeviceAddress insideThermometer;
 //Ausgänge an DigitalPIN --------------------------------------------
 int schalterH1 = 6;                                   //Zuordnung Heizung Relais1
 int schalterH2 = 7;                                   //Zuordnung Heizung Relais1
-int schalterB = 19;                                   //Zuordnung Braumeisterruf
-int schalterF = 18;                                   //Zuordnung Braumeisterruf
+int schalterB = 14;                                   //Zuordnung Braumeisterruf A0
+int schalterF = 15;                                   //Zuordnung Braumeisterruf A1
 //-----------------------------------------------------------------
 
 
