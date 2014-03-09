@@ -1690,7 +1690,7 @@ void funktion_kochzeit()      //Modus=40
     fuenfmindrehen=180;
   }
 
-  print_lcd_minutes( kochzeit, 5, 1);
+  print_lcd_minutes( kochzeit, RIGHT, 1);
 
   if (ButtonPressed == 0) {
     einmaldruck=true;
@@ -1882,22 +1882,6 @@ void funktion_hopfenzeitautomatik()      //Modus=44
     print_lcd("         ", LEFT, 0);
 
     print_lcd_minutes(hopfenZeit[x], LEFT, 0);
-    /*if (kochzeit < 10)
-     {
-     print_lcd("  ", LEFT, 0);
-     printNumI_lcd(kochzeit, 2, 0);
-     }
-     if ((kochzeit >= 10) && (kochzeit < 100))
-     {
-     print_lcd(" ", LEFT, 0);
-     printNumI_lcd(kochzeit, 1, 0);
-     }
-     if (kochzeit >= 100)
-     {
-     printNumI_lcd(kochzeit, 0, 0);
-     }
-     */
-    //print_lcd("min", 4, 0);
 
     sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
     minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
@@ -1913,23 +1897,6 @@ void funktion_hopfenzeitautomatik()      //Modus=44
     print_lcd(". Gabe bei ", 1, 2);
 
     print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
-    /*
-    if (hopfenZeit[x] < 10)
-     {
-     print_lcd("  ", 13, 2);
-     printNumI_lcd(hopfenZeit[x], 15, 2);
-     }
-     if ((hopfenZeit[x] >= 10) && (hopfenZeit[x] < 100))
-     {
-     print_lcd(" ", 13, 2);
-     printNumI_lcd(hopfenZeit[x], 14, 2);
-     }
-     if (hopfenZeit[x] > 100)
-     {
-     printNumI_lcd(hopfenZeit[x], 13, 2);
-     }
-     */
-    //print_lcd("min", RIGHT, 2);
   }
   else
     print_lcd("                    ", 0, 2);
@@ -2097,7 +2064,6 @@ void funktion_timerlauf()      //Modus=61
     anfang=1;
     lcd.clear();
     print_lcd("Timer", RIGHT, 0);
-
     print_lcd("Set Time", LEFT, 0);
 
     setTime(00,00,00,00,01,01);   //.........Sekunden auf 0 stellen
@@ -2123,19 +2089,6 @@ void funktion_timerlauf()      //Modus=61
   }
 
   print_lcd_minutes(timer, RIGHT, 2);
-  /*
-  if (timer < 10)
-   {  
-   print_lcd(" ", 14, 2);
-   printNumI_lcd(timer, 15, 2);
-   }
-   else
-   {
-   printNumI_lcd(timer, 14, 2); 
-   }
-   */
-  //print_lcd("min", RIGHT, 2);
-
 
   print_lcd("00:00", LEFT, 2);
 
@@ -2210,7 +2163,7 @@ void funktion_abbruch()       // Modus 80
 
 void print_lcd_minutes (int value, int x, int y) {
   if (x == RIGHT) {
-    x = 19-(3+4);
+    x = 19-(3+4)+1;
   }
 
   if (value < 10)
