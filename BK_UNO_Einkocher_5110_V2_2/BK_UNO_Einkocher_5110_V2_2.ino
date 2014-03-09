@@ -1,5 +1,4 @@
 
-
 //start=============================================================
 
 //Automatische Steuerung zum Bierbrauen
@@ -51,11 +50,11 @@
  * Dadurch soll stetiges Schalten verhindert werden.
  * Gilt nicht bei Überschreitung der Sollteperatur um 0,5 Grad,
  * dann wird sofort ausgeschaltet.
-
+ 
  * Die Funktionen die auf den Vergleich Sollwert mit Istwert
  * beruhen werden immer erst nach 10 Messungen ausgeführt.
-
-
+ 
+ 
  * Bedienung mit Encoder und
  * LCD-Display Nokia 5110
  * Anschlüsse:
@@ -67,9 +66,9 @@
  * PIN 7 : Heizung Nullleiter => funktioniert umgekehrt (HIGH aus, LOW an)
  * PIN A5 (=19): Ruf (Summer) => Analogpin als Digitaler Ausgang
  * PIN A4 (=18): Funkruf (Summer) => Analogpin als Digitaler Ausgang
-
-
-//LCD Initialisierung ----------------------------------------------
+ 
+ 
+ //LCD Initialisierung ----------------------------------------------
 /*
  * LCD PIN – Uno Pin
  * 1    -    D11
@@ -92,16 +91,13 @@
  
  */
 
-//#include <LCD5110_Basic.h>
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
-
-//LCD5110 myGLCD(8,9,10,11,12);
 LiquidCrystal_I2C lcd(0x3f,20,4);
 
-extern uint8_t SmallFont[];
-extern uint8_t MediumNumbers[];
-extern uint8_t BigNumbers[];
+byte degC[8] = {
+  B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111};
+
 //------------------------------------------------------------------
 
 
@@ -147,15 +143,15 @@ DeviceAddress insideThermometer;
 
 
 //Ausgänge an DigitalPIN --------------------------------------------
-int schalterH1 = 6;                                   //Zuordnung Heizung Relais1
-int schalterH2 = 7;                                   //Zuordnung Heizung Relais1
+int schalterH1 = 7;                                   //Zuordnung Heizung Relais1
+int schalterH2 = 8;                                   //Zuordnung Heizung Relais1
 int schalterB = 14;                                   //Zuordnung Braumeisterruf A0
 int schalterF = 15;                                   //Zuordnung Braumeisterruf A1
 //-----------------------------------------------------------------
 
 
 //Taster an Digital PIN--------------------------------------------
-int taster = 4;     // Taster am Pin 4 für Bestätigung und Abbruch
+int taster = 5;     // Taster am Pin 4 für Bestätigung und Abbruch
 int val = 0;           // Variable um Messergebnis zu speichern
 //-----------------------------------------------------------------
 
@@ -190,25 +186,104 @@ int stunden=0;                                          //Zeitzählung
 
 //Vorgabewerte zur ersten Einstellung------------------------------------------- 
 int sollwert=20;                                    //Sollwertvorgabe für Anzeige
-int maischtemp=45;                                    //Vorgabe Einmasichtemperatur
+int maischtemp=45;                                 //Vorgabe Einmasichtemperatur
 int rasten=3;                                         //Vorgabe Anzahl Rasten
-int rastTemp[]={0,55,64,72,72,72};        //Rasttemperatur Werte
-int rastZeit[]={0,15,35,25,20,20};              //Rastzeit Werte
-int braumeister[]={0,0,0,0,0,0};               //Braumeisterruf standart AUS
+int rastTemp[]={
+  0,55,64,72,72,72};        //Rasttemperatur Werte
+int rastZeit[]={
+  0,15,35,25,20,20};              //Rastzeit Werte
+int braumeister[]={
+  0,0,0,0,0,0};               //Braumeisterruf standart AUS
 int endtemp=78;                                     //Vorgabewert Endtemperatur
 
 int kochzeit=90;
 int hopfenanzahl=2;
-int hopfenZeit[]={0,10,40,40,40,40,40};
+int hopfenZeit[]={ 
+  0,10,40,40,40,40,40};
 int timer=10;
+
+
+#define LEFT 0
+#define RIGHT 9999
+#define CENTER 9998
+
+void print_lcd (char *st, int x, int y) {
+  int stl = strlen(st);
+  if (x == RIGHT) {
+    x = 20-stl;
+  }
+  if (x == CENTER) {
+    x = (20-stl)/2;
+  }
+  if (x < 0) {
+    x = 0;
+  }
+  if (x >19) {
+    x = 19;
+  }
+  if (y > 3) {
+    y = 3;
+  }
+  lcd.setCursor(x, y);
+  lcd.print(st);
+}
+
+void printNumI_lcd(long num, int x, int y, int length=0, char filler=' ') {
+  char st[10];
+  sprintf(st, "%i", num);
+  print_lcd(st,x,y);
+}
+
+void printNumF_lcd (double num, byte dec, int x, int y, char divider='.', int length=0, char filler=' ') {
+  char st[27];
+
+  boolean neg=false;
+
+  if (num<0) {
+    neg = true;
+  }
+  dtostrf(num, length,dec, st );
+
+  if (divider != '.')
+  {
+    for (int i=0; i<sizeof(st); i++) {
+      if (st[i]=='.') {
+        st[i]=divider;
+      }
+    }
+  }
+
+  if (filler != ' ')
+  {
+    if (neg)
+    {
+      st[0]='-';
+      for (int i=1; i<sizeof(st); i++) {
+        if ((st[i]==' ') || (st[i]=='-')) {
+          st[i]=filler;
+        }
+      }
+    }
+    else
+    {
+      for (int i=0; i<sizeof(st); i++) {
+        if (st[i]==' ') {
+          st[i]=filler;
+        }
+      }
+    }
+  }
+
+  print_lcd(st,x,y);
+}
 
 //setup=============================================================
 void setup()
 {
 
-  Serial.begin(9600);           //.........Test Serial
-  Serial.println("Test");         //.........Test Serial
-  
+  //Serial.begin(9600);           //.........Test Serial
+  //Serial.println("Test");         //.........Test Serial
+
   drehen=sollwert;
   //drehen=sollwert;
 
@@ -223,43 +298,47 @@ void setup()
 
   pinMode(taster, INPUT);                    // Pin für Taster
   digitalWrite(taster, HIGH);                // Turn on internal pullup resistor
-  
+
   pinMode(2, INPUT);                    // Pin für Drehgeber
   digitalWrite(2, HIGH);                // Turn on internal pullup resistor
   pinMode(3, INPUT);                    // Pin für Drehgeber
   digitalWrite(3, HIGH);                // Turn on internal pullup resistor
-  
+
 
   attachInterrupt(0, isr_2, FALLING);   // Call isr_2 when digital pin 2 goes LOW
   attachInterrupt(1, isr_3, FALLING);   // Call isr_3 when digital pin 3 goes LOW
 
 
   //LCD Setup ------------------------------------------------------
-  myGLCD.InitLCD();
-  myGLCD.clrScr();
-  
-  myGLCD.setFont(SmallFont);
-  
-  myGLCD.print("BK V2.2 - 5110", LEFT, 0);
-  myGLCD.print("Arduino", LEFT, 12);
-  myGLCD.print(":)", RIGHT, 24);
-  myGLCD.print(":)", RIGHT, 32);
-  myGLCD.print("fg100", RIGHT, 40);
-  
-  delay (2000);
-  
-  for (x=1; x<3; x++) 
-  { 
-  digitalWrite(schalterB, HIGH);   // Alarmtest
-  digitalWrite(schalterF, HIGH);   // Funkalarmtest
-  delay(200);
-  digitalWrite(schalterB, LOW);   // Alarm ausschalten
-  digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
-  delay(200);
+  lcd.init();
+
+  lcd.createChar(8, degC);         // Celsius
+
+  lcd.backlight();
+  lcd.clear();
+
+  //myGLCD.setFont(SmallFont);
+  print_lcd("BK V2.2 - LC2004", LEFT, 0);
+  print_lcd("Arduino", LEFT, 1);
+  print_lcd(":)", RIGHT, 2);
+  print_lcd("realholgi & fg100", RIGHT, 3);
+
+  //delay (2000);
+
+  if (0) { // FIXME
+    for (x=1; x<3; x++) 
+    { 
+      digitalWrite(schalterB, HIGH);   // Alarmtest
+      digitalWrite(schalterF, HIGH);   // Funkalarmtest
+      delay(200);
+      digitalWrite(schalterB, LOW);   // Alarm ausschalten
+      digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+      delay(200);
+    }
   }
   x=1;
-  
-  myGLCD.clrScr();
+
+  lcd.clear();
   // --------------------------------------------------------------- 
 
 
@@ -270,62 +349,62 @@ void setup()
   //---------------------------------------------------------------
 }
 
-
 //loop=============================================================
 void loop()
 {
 
-  
+
   // Zeitermittlung ------------------------------------------------------  
   sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
   minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
   stunden=hour();       //aktuell Stunde abspeichern für die Zeitrechnung
-   //---------------------------------------------------------------
-  
+  //---------------------------------------------------------------
+
 
   // Temperatursensor DS1820 Temperaturabfrage ---------------------
   // call sensors.requestTemperatures() to issue a global temperature 
   sensors.requestTemperatures(); // Send the command to get temperatures
   sensorwert = sensors.getTempC(insideThermometer);
   if ((sensorwert != isttemp) && (n < 10)) // Messfehlervermeidung
-    {                                      // des Sensorwertes
+  {                                      // des Sensorwertes
     n++;                                   // nach mehreren
-    }                                      // Messungen
+  }                                      // Messungen
   else
-    {
+  {
     isttemp=sensorwert;
     n=0;
-     }
+  }
   //---------------------------------------------------------------
- 
- 
+
+
   // Sensorfehler ------------------------------------------------- 
   // Sensorfehler -127 => VCC fehlt
   // Sensorfehler 85.00 => interner Sensorfehler ggf. Leitung zu lang
   //                       nicht aktiviert
   // Sensorfehler 0.00 => Datenleitung oder GND fehlt
- 
-  
+
+
   if (regelung == 1 || regelung == 2) //nur bei Masichen bzw. Kühlen
   {
-    if ((int)isttemp == -127 || (int)isttemp == 0 )
-                  //zur besseren Erkennung Umwandling in (int)-Wert
-                  //sonst Probleme mit der Erkennung gerade bei 0.00
-     if (sensorfehler == 0)
-     {
-       rufmodus=modus;
-       myGLCD.print("Sensorfehler", RIGHT, 32);
-       regelung=0;
-       heizung=0;
-       sensorfehler=1;
-       modus=31;
-     }
+    if ((int)isttemp == -127 || (int)isttemp == 0 ) {
+      //zur besseren Erkennung Umwandling in (int)-Wert
+      //sonst Probleme mit der Erkennung gerade bei 0.00
+      if (sensorfehler == 0)
+      {
+        rufmodus=modus;
+        print_lcd("Sensorfehler", RIGHT, 3);
+        regelung=0;
+        heizung=0;
+        sensorfehler=1;
+        modus=31;
+      }
+    }
   }
   //-------------------------------------------------------------------
 
 
- 
- 
+
+
   //Encoder drehen ------------------------------------------------
   if(number != oldnumber)
   {
@@ -346,303 +425,307 @@ void loop()
     }
   }
   //---------------------------------------------------------------
- 
- 
+
+
   // Temperaturanzeige Istwert --------------------------------------- 
-  myGLCD.print("ist", 20, 40);
-  myGLCD.printNumF(float(sensorwert), 1,46, 40);
-  myGLCD.setFont(SmallFont);
-  myGLCD.print("~C", RIGHT, 40);
+  print_lcd("ist", 10, 3);
+  printNumF_lcd(float(sensorwert), 1,15, 3);
+  lcd.setCursor(19, 3);
+  lcd.write(8);
+  //print_lcd("", RIGHT, 3);
   //-------------------------------------------------------------------
 
 
- //Heizregelung----------------------------------------------------
- if (regelung == 1)
- {
-  // Temperaturanzeige Sollwert --------------------------------------- 
-  myGLCD.printNumF(int(sollwert), 1,46, 8);
-  myGLCD.print("~C", RIGHT, 8);
-  //-------------------------------------------------------------------
+  //Heizregelung----------------------------------------------------
+  if (regelung == 1)
+  {
+    // Temperaturanzeige Sollwert --------------------------------------- 
+    printNumF_lcd(int(sollwert), 1,15, 1);
+    lcd.setCursor(19, 1);
+    lcd.write(8);
+    //-------------------------------------------------------------------
 
 
-   /*
+    /*
    Regelung beim Hochfahren: Heizung schaltet 0,5°C vor Sollwert aus
-   nach einer Wartezeit schaltet es dann um auf hysteresefreie Regelung
-   beim Umschalten zwischen ein und aus,
-   D.h. nach dem Umschalten ist ein weiteres Schalten für 1 min gesperrt.
-   Ausnahme ist die Überschreitung des Sollwertes um 0,5°C.
-   Dann wird sofort ausgschaltet.
-   Es soll dadurch das Relaisrattern durch Springen
-   der Temperatur am Schaltpunkt verhindern.
-   */
-   
-   
+     nach einer Wartezeit schaltet es dann um auf hysteresefreie Regelung
+     beim Umschalten zwischen ein und aus,
+     D.h. nach dem Umschalten ist ein weiteres Schalten für 1 min gesperrt.
+     Ausnahme ist die Überschreitung des Sollwertes um 0,5°C.
+     Dann wird sofort ausgschaltet.
+     Es soll dadurch das Relaisrattern durch Springen
+     der Temperatur am Schaltpunkt verhindern.
+     */
+
+
     //setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
     if ((isttemp <= (sollwert-4)) && (heizung == 1))
-      {
-        hysterese=0.5;
-      }
-      
+    {
+      hysterese=0.5;
+    }
+
     //Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
     if ((heizung == 1) && (isttemp >= (sollwert-hysterese)) && (millis() >= (wartezeit+60000)))
-      {                        // mit Wartezeit für eine Temperaturstabilität
+    {                        // mit Wartezeit für eine Temperaturstabilität
       heizung=0;               // Heizung ausschalten
       hysterese=0;             //Verschiebung des Schaltpunktes um die Hysterese
       wartezeit=millis();      //Start Wartezeitzählung
-      }
- 
-     //Einschalten wenn kleiner Sollwert und dann Wartezeit  
-   if ((heizung == 0) && (isttemp <= (sollwert-0.5)) && (millis() >= (wartezeit+60000)))
-      {                        // mit Wartezeit für eine Temperaturstabilität
+    }
+
+    //Einschalten wenn kleiner Sollwert und dann Wartezeit  
+    if ((heizung == 0) && (isttemp <= (sollwert-0.5)) && (millis() >= (wartezeit+60000)))
+    {                        // mit Wartezeit für eine Temperaturstabilität
       heizung=1;               // Heizung einschalten
       hysterese=0;             //Verschiebung des Schaltpunktes um die Hysterese
       wartezeit=millis();      //Start Wartezeitzählung
-      }
-      
-     //Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
-     if ((heizung == 1) && (isttemp >= (sollwert+0.5)))
-     {
+    }
+
+    //Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
+    if ((heizung == 1) && (isttemp >= (sollwert+0.5)))
+    {
       heizung=0;               // Heizung ausschalten
       hysterese=0;             //Verschiebung des Schaltpunktes um die Hysterese
       wartezeit=millis();      //Start Wartezeitzählung
-     }
+    }
   }
-      
-// Zeigt den Buchstaben "H" bzw. "K", wenn Heizen oder Kühlen----------
-// und schalter die Pins--------------------------------------------
+
+  // Zeigt den Buchstaben "H" bzw. "K", wenn Heizen oder Kühlen----------
+  // und schalter die Pins--------------------------------------------
   if (heizung == 1)
-    {
-      if (regelung == 1)              //Maischen
-        myGLCD.print("H", LEFT, 40);
-      if (regelung == 2)              //Kühlen
-        myGLCD.print("K", LEFT, 40);
-      if (regelung == 3)              //Kochen
-        myGLCD.print("H", LEFT, 40);
-      digitalWrite(schalterH1, LOW);   // einschalten
-      digitalWrite(schalterH2, LOW);   // einschalten
-    }
-    else
-    {
-      myGLCD.print(" ", LEFT, 40);
-      digitalWrite(schalterH1, HIGH);   // ausschalten
-      digitalWrite(schalterH2, HIGH);   // ausschalten
-    }
- //Ende Heizregelung---------------------------------------------------
- 
- 
- //Kühlregelung -----------------------------------------------------
- if (regelung == 2)
- {
-  // Temperaturanzeige Sollwert --------------------------------------- 
-  myGLCD.printNumF(int(sollwert), 1,46, 8);
-  myGLCD.print("~C", RIGHT, 8);
-  //-------------------------------------------------------------------
-  if ((isttemp >= (sollwert+1)) && (millis() >= (wartezeit+60000)))
-      {                        // mit Wartezeit für eine Temperaturstabilität
+  {
+    if (regelung == 1)             //Maischen
+      print_lcd("H", LEFT, 3);
+    if (regelung == 2)              //Kühlen
+      print_lcd("K", LEFT, 3);
+    if (regelung == 3)              //Kochen
+      print_lcd("H", LEFT, 3);
+
+    digitalWrite(schalterH1, LOW);   // einschalten
+    digitalWrite(schalterH2, LOW);   // einschalten
+  }
+  else
+  {
+    print_lcd(" ", LEFT, 3);
+    digitalWrite(schalterH1, HIGH);   // ausschalten
+    digitalWrite(schalterH2, HIGH);   // ausschalten
+  }
+  //Ende Heizregelung---------------------------------------------------
+
+
+  //Kühlregelung -----------------------------------------------------
+  if (regelung == 2)
+  {
+    // Temperaturanzeige Sollwert --------------------------------------- 
+    printNumF_lcd(int(sollwert), 1,15, 1);
+    lcd.setCursor(19, 1);
+    lcd.write(8);
+    //-------------------------------------------------------------------
+    if ((isttemp >= (sollwert+1)) && (millis() >= (wartezeit+60000)))
+    {                        // mit Wartezeit für eine Temperaturstabilität
       heizung=1;               // einschalten
       wartezeit=millis();      //Start Wartezeitzählung
-      }
- 
-   if ((isttemp <= sollwert-1) && (millis() >= (wartezeit+60000)))
-      {                        // mit Wartezeit für eine Temperaturstabilität
+    }
+
+    if ((isttemp <= sollwert-1) && (millis() >= (wartezeit+60000)))
+    {                        // mit Wartezeit für eine Temperaturstabilität
       heizung=0;               // ausschalten
       wartezeit=millis();      //Start Wartezeitzählung
-      }
-      
-     //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
-     if (isttemp < (sollwert-2))
-     {
-     heizung=0;               // ausschalten
-     wartezeit=millis();      //Start Wartezeitzählung
-     }
- }
- //Ende Kühlregelung ---------------------------------------------
+    }
 
- //Kochen => dauernd ein----------------------------------------------
- if (regelung == 3)
-   {
-   heizung=1;               // einschalten
-   }
- //Ende Kochen -----------------------------------------------------------
- 
- 
+    //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
+    if (isttemp < (sollwert-2))
+    {
+      heizung=0;               // ausschalten
+      wartezeit=millis();      //Start Wartezeitzählung
+    }
+  }
+  //Ende Kühlregelung ---------------------------------------------
+
+  //Kochen => dauernd ein----------------------------------------------
+  if (regelung == 3)
+  {
+    heizung=1;               // einschalten
+  }
+  //Ende Kochen -----------------------------------------------------------
+
+
 
   // Drehgeber und Tastenabfrage -------------------------------------------------
   isr_2();   //drehgeber abfragen
   isr_3();   //drehgeber abfragen
   getButton();  //Taster abfragen
   //---------------------------------------------------------------
-  
-    
+
+
   // Abfrage Modus
 
   if (modus == 0)   //Hauptschirm
-    {
+  {
     regelung=0;
     funktion_hauptschirm();
-    }
- 
+  }
+
   if (modus == 11)   //Maischmenue
-    {
+  {
     regelung=0;
     funktion_maischmenue();
-    }   
-    
+  }   
+
   if (modus == 1)   //Nur Temperaturregelung
-    {
+  {
     regelung=1;
     funktion_temperatur();
-    }
-    
+  }
+
   if (modus == 2)   //Nachgusswasserbereitung
-    {
+  {
     regelung=1;
     funktion_temperatur();
-    }
-    
+  }
+
   if (modus == 5)   //Kühlen
-    {
+  {
     regelung=2;
     funktion_temperatur();
-    }
-    
- if (modus == 10)   //Alarmtest
-    {
+  }
+
+  if (modus == 10)   //Alarmtest
+  {
     regelung=0;
     rufmodus=0;
-    myGLCD.print("Alarmtest", RIGHT, 32);
+    print_lcd("Alarmtest", RIGHT, 3);
     modus=31;
-    }    
-       
+  }    
+
   if (modus == 19)   //Eingabe Anzahl der Rasten
-    {
+  {
     regelung=0;
     funktion_rastanzahl();
-    }
-    
+  }
+
   if (modus == 20)   //Eingabe Einmaischtemperatur
-    {
+  {
     regelung=0;
     funktion_maischtemperatur();
-    } 
+  } 
 
   if (modus == 21)   //Eingabe der Temperatur der Rasten
-    {
+  {
     regelung=0;
     funktion_rasteingabe(); 
-    }
-    
+  }
+
   if (modus == 22)   //Eingabe der Rastzeitwerte
-    {
+  {
     regelung=0;
     funktion_zeiteingabe(); 
-    }
-    
+  }
+
   if (modus == 23)  //Eingabe Rührwerk an/aus -> nicht eingebaut
-    {
+  {
     regelung=0;
     funktion_ruehrwerk();
-    }
-    
+  }
+
   if (modus == 24)  //Eingabe Braumeisterruf an/aus ?
-    {
+  {
     regelung=0;
     funktion_braumeister();   
-    }
-    
+  }
+
   if (modus == 25)   //Eingabe der Rasttemperaturwerte
-    {
+  {
     regelung=0;
     funktion_enttempeingabe();
-    }
-    
+  }
+
   if (modus == 26)   //Startabfrage
-    {
+  {
     regelung=0;
     funktion_startabfrage();
-    }
-    
+  }
+
   if (modus == 27)   //Automatik Maischtemperatur
-    {
+  {
     regelung=1;
     funktion_maischtemperaturautomatik();
-    }
-    
+  }
+
   if (modus == 28)   //Automatik Temperatur
-    {
+  {
     regelung=1;
     funktion_tempautomatik();
-    }
-    
+  }
+
   if (modus == 29)   //Automatik Zeit
-    {
+  {
     regelung=1;
     funktion_zeitautomatik();
-    }
-    
+  }
+
   if (modus == 30)   //Automatik Endtemperatur
-    {
+  {
     regelung=1;
     funktion_endtempautomatik();
-    }
-    
+  }
+
   if (modus == 31)   //Braumeisterrufalarm
-    {
+  {
     funktion_braumeisterrufalarm();
-    }
+  }
 
   if (modus == 32)   //Braumeisterruf
-    {
+  {
     funktion_braumeisterruf();  
-    }   
-       
+  }   
+
   if (modus == 40)   //Kochen Kochzeit
-    {
+  {
     regelung=3;          //Kochen => dauernd eingeschaltet
     funktion_kochzeit();
-    } 
-          
+  } 
+
   if (modus == 41)   //Kochen Anzahl der Hopfengaben
-    {
+  {
     regelung=3;          //Kochen => dauernd eingeschaltet
     funktion_anzahlhopfengaben();
-    }
-  
+  }
+
   if (modus == 42)   //Kochen Eingabe der Zeitwerte
-    {
+  {
     regelung=3;          //Kochen => dauernd eingeschaltet
     funktion_hopfengaben(); 
-    }
-    
+  }
+
   if (modus == 43)   //Startabfrage
-    {
+  {
     regelung=3;          //Kochen => dauernd eingeschaltet
     funktion_starthopfengaben();
-    }
-     
+  }
+
   if (modus == 44)   //Kochen Automatik Zeit
-    {
+  {
     regelung=3;          //Kochen => dauernd eingeschaltet
     funktion_hopfenzeitautomatik();
-    }
-   
+  }
+
   if (modus == 60)   //Timer
-    {
+  {
     regelung=0;
     funktion_timer();
-    }   
+  }   
 
   if (modus == 61)   //Timerlauf
-    {
+  {
     regelung=0;
-     funktion_timerlauf();
-    }  
+    funktion_timerlauf();
+  }  
 
 
   if (modus == 80)   //Abbruch
-    {
+  {
     funktion_abbruch();
-    }
+  }
 
 
   // -----------------------------------------------------------------
@@ -720,82 +803,80 @@ void funktion_hauptschirm()      //Modus=0
 { 
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Maischen", 16, 0);
-    myGLCD.print("Kochen", 16, 8);
-    myGLCD.print("Timer", 16, 16);
-    myGLCD.print("Kuehlen", 16, 24);
+    lcd.clear();
+    print_lcd("Maischen", 2, 0);
+    print_lcd("Kochen", 2, 1);
+    print_lcd("Timer", 2, 2);
+    print_lcd("Kuehlen", 2, 3);
     drehen=0;
     anfang=1;
   }
-  
-  
+
+
   if (drehen <= 0)
-   {
-   drehen=0;
-   }
-   if (drehen >= 3)
-   {
-   drehen=3;
-   }  
-   
-    
+  {
+    drehen=0;
+  }
+  if (drehen >= 3)
+  {
+    drehen=3;
+  }  
+
   if (drehen == 0)
-   {
-   rufmodus=11;
-   myGLCD.print("=>", LEFT, 0);
-   myGLCD.print("  ", LEFT, 8);
-   myGLCD.print("  ", LEFT, 16);
-   myGLCD.print("  ", LEFT, 24);
-   }
-   
-   if (drehen == 1)
-   {
-   rufmodus=40;
-   myGLCD.print("  ", LEFT, 0);
-   myGLCD.print("=>", LEFT, 8);
-   myGLCD.print("  ", LEFT, 16);
-   myGLCD.print("  ", LEFT, 24);
-   }
-   
-   if (drehen == 2)
-   {
-   rufmodus=60;
-   myGLCD.print("  ", LEFT, 0);
-   myGLCD.print("  ", LEFT, 8);
-   myGLCD.print("=>", LEFT, 16);
-   myGLCD.print("  ", LEFT, 24);
-   }
-   
-   if (drehen == 3)
-   {
-   rufmodus=5;
-   myGLCD.print("  ", LEFT, 0);
-   myGLCD.print("  ", LEFT, 8);
-   myGLCD.print("  ", LEFT, 16);
-   myGLCD.print("=>", LEFT, 24);
-   }
-  
-     
-   
+  {
+    rufmodus=11;
+    print_lcd("=>", LEFT, 0);
+    print_lcd("  ", LEFT, 1);
+    print_lcd("  ", LEFT, 2);
+    print_lcd("  ", LEFT, 3);
+  }
+
+  if (drehen == 1)
+  {
+    rufmodus=40;
+    print_lcd("  ", LEFT, 0);
+    print_lcd("=>", LEFT, 1);
+    print_lcd("  ", LEFT, 2);
+    print_lcd("  ", LEFT, 3);
+  }
+
+  if (drehen == 2)
+  {
+    rufmodus=60;
+    print_lcd("  ", LEFT, 0);
+    print_lcd("  ", LEFT, 1);
+    print_lcd("=>", LEFT, 2);
+    print_lcd("  ", LEFT, 3);
+  }
+
+  if (drehen == 3)
+  {
+    rufmodus=5;
+    print_lcd("  ", LEFT, 0);
+    print_lcd("  ", LEFT, 1);
+    print_lcd("  ", LEFT, 2);
+    print_lcd("=>", LEFT, 3);
+  }
+
   if (ButtonPressed == 0)
     einmaldruck=true;
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus=rufmodus;
       if (modus == 5)
-        {                               //Übergabe an Modus1
+      {                               //Übergabe an Modus1
         isttemp_ganzzahl=isttemp;       //isttemp als Ganzzahl
         drehen=isttemp_ganzzahl;    //ganzzahliger Vorgabewert
-        }                               //für Sollwert 
-      
+      }                               //für Sollwert 
+
       anfang=0;
-      myGLCD.clrScr();
+      lcd.clear();
     }
- 
+
+  }
 }
 //-----------------------------------------------------------------
 
@@ -805,71 +886,71 @@ void funktion_maischmenue()      //Modus=01
 { 
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Manuell", 16, 0);
-    myGLCD.print("Automatik", 16, 8);
-    myGLCD.print("Nachguss", 16, 16);
+    lcd.clear();
+    print_lcd("Manuell", 2, 0);
+    print_lcd("Automatik", 2, 1);
+    print_lcd("Nachguss", 2, 2);
     drehen=0;
     anfang=1;
   }
-  
-  
-  if (drehen <= 0)
-   {
-   drehen=0;
-   }
-   if (drehen >= 2)
-   {
-   drehen=2;
-   }  
-   
-    
-  if (drehen == 0)
-   {
-   rufmodus=1;
-   myGLCD.print("=>", LEFT, 0);
-   myGLCD.print("  ", LEFT, 8);
-   myGLCD.print("  ", LEFT, 16);
-   }
-   
-   if (drehen == 1)
-   {
-   rufmodus=19;
-   myGLCD.print("  ", LEFT, 0);
-   myGLCD.print("=>", LEFT, 8);
-   myGLCD.print("  ", LEFT, 16);
-   }
-   
-   if (drehen == 2)
-   {
-   rufmodus=2;
-   myGLCD.print("  ", LEFT, 0);
-   myGLCD.print("  ", LEFT, 8);
-   myGLCD.print("=>", LEFT, 16);
-   }
-   
-   
-  if (ButtonPressed == 0)
-    einmaldruck=true;
 
-  if (einmaldruck == true)
+
+  if (drehen <= 0)
+  {
+    drehen=0;
+  }
+  if (drehen >= 2)
+  {
+    drehen=2;
+  }  
+
+  if (drehen == 0)
+  {
+    rufmodus=1;
+    print_lcd("=>", LEFT, 0);
+    print_lcd("  ", LEFT, 1);
+    print_lcd("  ", LEFT, 2);
+  }
+
+  if (drehen == 1)
+  {
+    rufmodus=19;
+    print_lcd("  ", LEFT, 0);
+    print_lcd("=>", LEFT, 1);
+    print_lcd("  ", LEFT, 2);
+  }
+
+  if (drehen == 2)
+  {
+    rufmodus=2;
+    print_lcd("  ", LEFT, 0);
+    print_lcd("  ", LEFT, 1);
+    print_lcd("=>", LEFT, 2);
+  }
+
+
+  if (ButtonPressed == 0) {
+    einmaldruck=true;
+  }
+
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus=rufmodus;
       if (modus == 1)
-        {                               //Übergabe an Modus1
+      {                               //Übergabe an Modus1
         isttemp_ganzzahl=isttemp;       //isttemp als Ganzzahl
         drehen=(isttemp_ganzzahl + 10); //ganzzahliger Vorgabewert 10°C über Ist
-        }                               //für Sollwert 
+      }                               //für Sollwert 
       if (modus == 2)
-        {                               //Übergabe an Modus2
+      {                               //Übergabe an Modus2
         drehen=78;                      //Nachgusstemperatur
-        }                               //für Sollwert 
+      }                               //für Sollwert 
       anfang=0;
-      myGLCD.clrScr();
+      lcd.clear();
     }
- 
+  }
 }
 //-----------------------------------------------------------------
 
@@ -878,15 +959,16 @@ void funktion_maischmenue()      //Modus=01
 void funktion_temperatur()      //Modus=1 bzw.2
 { 
   sollwert=drehen;
-  
-  if (modus == 1)
-     myGLCD.print("Manuell", LEFT, 0);
-     
-  if (modus == 2)
-     myGLCD.print("Nachguss", LEFT, 0);
-     
-    if ((modus == 1) && (isttemp >= sollwert))   //Manuell -> Sollwert erreicht
-    {
+
+  if (modus == 1) {
+    print_lcd("Manuell", LEFT, 0);
+  }
+  if (modus == 2) {
+    print_lcd("Nachguss", LEFT, 0);
+  }
+
+  if ((modus == 1) && (isttemp >= sollwert))   //Manuell -> Sollwert erreicht
+  {
     modus=80;                  //Abbruch nach Rufalarm
     rufmodus=modus;
     modus=31;
@@ -894,21 +976,21 @@ void funktion_temperatur()      //Modus=1 bzw.2
     heizung=0;                 //Heizung aus
     y=0;
     braumeister[y]=1;          // Ruf und Abbruch
-    }
-    
-    if ((modus == 2) && (isttemp >= sollwert) && (nachgussruf == false))   //Nachguss -> Sollwert erreicht
-    {
+  }
+
+  if ((modus == 2) && (isttemp >= sollwert) && (nachgussruf == false))   //Nachguss -> Sollwert erreicht
+  {
     nachgussruf=true;
     rufmodus=modus;            //Rufalarm
     modus=31;
     y=0;
     braumeister[y]=2;          //nur Ruf und weiter mit Regelung
-    }
-     
-  if (modus == 5)
-     myGLCD.print("Kuehlen", LEFT, 0);
-     
-  myGLCD.print("soll", 20, 8);
+  }
+
+  if (modus == 5) {
+    print_lcd("Kuehlen", RIGHT, 0);
+  }
+  print_lcd("soll", 9, 1);
 
 }
 //-----------------------------------------------------------------
@@ -919,57 +1001,72 @@ void funktion_rastanzahl()          //Modus=19
 {
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Eingabe", LEFT, 0);
-    myGLCD.print("Rasten", LEFT, 16);
-    
+    lcd.clear();
+    print_lcd("Eingabe", LEFT, 0);
+    print_lcd("Rasten", LEFT, 1);
+
     drehen=rasten;
     anfang=1;
   }
- 
+
   //Vorgabewerte bei verschiedenen Rasten
   if (rasten != drehen)
   {
     if ((int)drehen == 1)
-        {
-        rastTemp[1]=67; rastZeit[1]=30;
-        maischtemp=65;
-        }
+    {
+      rastTemp[1]=67; 
+      rastZeit[1]=30;
+      maischtemp=65;
+    }
     if (drehen == 2)
-        {
-        rastTemp[1]=62; rastZeit[1]=30;
-        rastTemp[2]=72; rastZeit[2]=35;
-        maischtemp=55;
-        }
+    {
+      rastTemp[1]=62; 
+      rastZeit[1]=30;
+      rastTemp[2]=72; 
+      rastZeit[2]=35;
+      maischtemp=55;
+    }
     if (drehen == 3)
-        {
-        rastTemp[1]=55; rastZeit[1]=15;
-        rastTemp[2]=64; rastZeit[2]=35;
-        rastTemp[3]=72; rastZeit[3]=25;
-        maischtemp=45;
-        }
+    {
+      rastTemp[1]=55; 
+      rastZeit[1]=15;
+      rastTemp[2]=64; 
+      rastZeit[2]=35;
+      rastTemp[3]=72; 
+      rastZeit[3]=25;
+      maischtemp=45;
+    }
     if (drehen == 4)
-        {
-        rastTemp[1]=40; rastZeit[1]=20;
-        rastTemp[2]=55; rastZeit[2]=15;
-        rastTemp[3]=64; rastZeit[3]=35;
-        rastTemp[4]=72; rastZeit[4]=25;
-        maischtemp=35;
-        }
+    {
+      rastTemp[1]=40; 
+      rastZeit[1]=20;
+      rastTemp[2]=55; 
+      rastZeit[2]=15;
+      rastTemp[3]=64; 
+      rastZeit[3]=35;
+      rastTemp[4]=72; 
+      rastZeit[4]=25;
+      maischtemp=35;
+    }
     if (drehen == 5)
-        {
-        rastTemp[1]=35; rastZeit[1]=20;
-        rastTemp[2]=40; rastZeit[2]=20;
-        rastTemp[3]=55; rastZeit[3]=15;
-        rastTemp[4]=64; rastZeit[4]=35;
-        rastTemp[5]=72; rastZeit[5]=25;
-        maischtemp=30;
-        }
+    {
+      rastTemp[1]=35; 
+      rastZeit[1]=20;
+      rastTemp[2]=40; 
+      rastZeit[2]=20;
+      rastTemp[3]=55; 
+      rastZeit[3]=15;
+      rastTemp[4]=64; 
+      rastZeit[4]=35;
+      rastTemp[5]=72; 
+      rastZeit[5]=25;
+      maischtemp=30;
+    }
   }
-       
+
   rasten=drehen;
 
-  
+
   if (rasten <= 1)
   {
     rasten=1;
@@ -980,19 +1077,21 @@ void funktion_rastanzahl()          //Modus=19
     rasten=5;
     drehen=5;
   } 
-  
-  myGLCD.printNumI(rasten, 40, 16);
 
-  if (ButtonPressed == 0)
+  printNumI_lcd(rasten, 19, 1);
+
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------
 
@@ -1003,35 +1102,38 @@ void funktion_maischtemperatur()      //Modus=20
 
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Eingabe", LEFT, 0);
+    lcd.clear();
+    print_lcd("Eingabe", LEFT, 0);
     drehen=maischtemp;
     anfang=1;
   }
-  
+
   maischtemp=drehen;
 
-  if (maischtemp <= 10)
+  if (maischtemp <= 10) {
     maischtemp=10;
-
-  if (maischtemp >= 105)
+  }
+  if (maischtemp >= 105) {
     maischtemp=105;
+  }
 
-  
-  myGLCD.print("Maischtemp", LEFT, 8);
-  myGLCD.printNumF(int(maischtemp), 1, 44, 16);
-  myGLCD.print("~C", 68, 16);
+  print_lcd("Maischtemp", LEFT, 1);
+  printNumF_lcd(int(maischtemp), 1, 15, 1);
+  lcd.setCursor(19, 1);
+  lcd.write(8);
 
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1039,17 +1141,17 @@ void funktion_maischtemperatur()      //Modus=20
 // Funktion Rasteingabe Temperatur----------------------------------
 void funktion_rasteingabe()      //Modus=21
 {
-  
+
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Eingabe", LEFT, 0);
+    lcd.clear();
+    print_lcd("Eingabe", LEFT, 0);
     drehen=rastTemp[x];
     anfang=1;
   }
-  
+
   rastTemp[x]=drehen;
-  
+
   if (rastTemp[x] <= 10)
   {
     rastTemp[x]=9;
@@ -1062,23 +1164,23 @@ void funktion_rasteingabe()      //Modus=21
   }
 
 
-  myGLCD.printNumI(x, LEFT, 8);
-  myGLCD.print(".Rast", 8, 8);
-  myGLCD.printNumF(int(rastTemp[x]), 1, 48, 8);
-  myGLCD.print("~C", RIGHT, 8);
-  
+  printNumI_lcd(x, LEFT, 1);
+  print_lcd(". Rast", 1, 1);
+  printNumF_lcd(int(rastTemp[x]), 1, 15, 1);
+  lcd.setCursor(19, 1);
+  lcd.write(8);
 
-
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
-
-  if (einmaldruck == true)
+  }
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------
 
@@ -1092,9 +1194,9 @@ void funktion_zeiteingabe()      //Modus=22
     drehen=rastZeit[x];
     anfang=1;
   }
-  
+
   rastZeit[x]=drehen;
-  
+
   if (rastZeit[x] <= 1)
   {
     rastZeit[x]=1;
@@ -1106,38 +1208,28 @@ void funktion_zeiteingabe()      //Modus=22
     drehen=99;
   }
 
-  if (rastZeit[x] < 10)
-  {
-  myGLCD.print(" ", 48, 16);
-  myGLCD.printNumI(rastZeit[x], 54, 16);
-  myGLCD.print("min", RIGHT, 16);
-  }
-  else
-  {
-  myGLCD.printNumI(rastZeit[x], 48, 16);
-  myGLCD.print("min", RIGHT, 16);
-  }
-  
+  print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
-
-  if (einmaldruck == true)
+  }
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------
 
 
 // Funktion Rührwerk------------------------------------------------
 void funktion_ruehrwerk() //Modus=23
- {
- modus++;       //Moduserhöhung
- }
+{
+  modus++;       //Moduserhöhung
+}
 // nicht ausgeführt
 //------------------------------------------------------------------
 
@@ -1151,7 +1243,7 @@ void funktion_braumeister() //Modus=24
     drehen=braumeister[x];
     anfang=1;
   }
- 
+
   braumeister[x]=drehen;
   //delay(200);
 
@@ -1160,29 +1252,29 @@ void funktion_braumeister() //Modus=24
     braumeister[x]=0;
     drehen=0;
   }
-  
+
   if (braumeister[x] > 2)
   {
     braumeister[x]=2;
     drehen=2;
   }  
-  
-  myGLCD.print("Ruf", 18, 24);
 
-  if (braumeister[x] == 0)
-   myGLCD.print("  Nein  ", RIGHT, 24);
-   
-  if (braumeister[x] == 1)
-   myGLCD.print("Anhalten", RIGHT, 24);
-   
-  if (braumeister[x] == 2)
-   myGLCD.print("  Signal", RIGHT, 24);
+  print_lcd("Ruf", 0, 2);
 
- 
-  if (ButtonPressed == 0)
+  if (braumeister[x] == 0) {
+    print_lcd("    Nein", RIGHT, 2);
+  }
+  if (braumeister[x] == 1) {
+    print_lcd("Anhalten", RIGHT, 2);
+  }
+  if (braumeister[x] == 2) {
+    print_lcd("  Signal", RIGHT, 2);
+  }
+
+  if (ButtonPressed == 0) {
     einmaldruck=true;
-
-  if (einmaldruck == true)
+  }
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     {
       einmaldruck=false;     //Überprüfung loslassen der Taste Null  
@@ -1199,6 +1291,7 @@ void funktion_braumeister() //Modus=24
         anfang=0;
       }
     }
+  }
 }
 //------------------------------------------------------------------  
 
@@ -1209,34 +1302,36 @@ void funktion_enttempeingabe()      //Modus=25
 
   if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Eingabe", LEFT, 0);
+    lcd.clear();
+    print_lcd("Eingabe", LEFT, 0);
     drehen=endtemp;
     anfang=1;
   }
-  
+
   endtemp=drehen;
 
-  if (endtemp <= 10)
+  if (endtemp <= 10) {
     endtemp=10;
-
-  if (endtemp >= 80)
+  }
+  if (endtemp >= 80) {
     endtemp=80;
+  }
+  print_lcd("Endtemperatur", LEFT, 1);
+  printNumF_lcd(int(endtemp), 1, 15, 1);
+  lcd.setCursor(19, 1);
+  lcd.write(8);
 
-  myGLCD.print("Endtemperatur", LEFT, 8);
-  myGLCD.printNumF(int(endtemp), 1, 44, 16);
-  myGLCD.print("~C", 68, 16);
-
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
-
-  if (einmaldruck == true)
+  }
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1245,33 +1340,35 @@ void funktion_enttempeingabe()      //Modus=25
 void funktion_startabfrage()      //Modus=26
 {
   if (anfang == 0)
-    {
-    myGLCD.clrScr();
-    myGLCD.print("Automatik", LEFT, 0);
+  {
+    lcd.clear();
+    print_lcd("Automatik", LEFT, 0);
     anfang=1;
     altsekunden=millis();
-    }
+  }
 
   if (millis() >= (altsekunden+1000))
   {
-  myGLCD.print("       ", CENTER, 16);
-   if (millis() >= (altsekunden+1500))
-     altsekunden=millis();
+    print_lcd("       ", CENTER, 2);
+    if (millis() >= (altsekunden+1500))
+      altsekunden=millis();
   }
-  else
-  myGLCD.print("Start ?", CENTER, 16);
-  
+  else {
+    print_lcd("Start ?", CENTER, 2);
+  }
 
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       anfang=0;
       modus++;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1279,27 +1376,27 @@ void funktion_startabfrage()      //Modus=26
 // Funktion Automatik Maischtemperatur---------------------------------
 void funktion_maischtemperaturautomatik()      //Modus=27
 {
- if (anfang == 0)
+  if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Auto", LEFT, 0);
-    myGLCD.print("Maischen", RIGHT, 0);
-   drehen=maischtemp;      //Zuordnung Encoder
-   anfang=1;
+    lcd.clear();
+    print_lcd("Auto", LEFT, 0);
+    print_lcd("Maischen", RIGHT, 0);
+    drehen=maischtemp;      //Zuordnung Encoder
+    anfang=1;
   }
 
   maischtemp=drehen;
 
   sollwert=maischtemp;
-    
+
   if (isttemp >= sollwert)  // Sollwert erreicht ?
-   {
-   modus++;
-   rufmodus=modus;
-   y=0;
-   braumeister[y]=1;
-   modus=31;
-   }
+  {
+    modus++;
+    rufmodus=modus;
+    y=0;
+    braumeister[y]=1;
+    modus=31;
+  }
 }   
 //------------------------------------------------------------------
 
@@ -1310,24 +1407,24 @@ void funktion_tempautomatik()      //Modus=28
   if (anfang == 0)
   {
 
-    myGLCD.clrScr();
-    myGLCD.print("Auto", LEFT, 0);
-    myGLCD.printNumI(x, 48, 0);
-    myGLCD.print(".Rast", RIGHT, 0);
-   
+    lcd.clear();
+    print_lcd("Auto", LEFT, 0);
+    printNumI_lcd(x, 13, 0);
+    print_lcd(". Rast", RIGHT, 0);
+
     drehen=rastTemp[x];
     anfang=1;
   }
-  
+
   rastTemp[x]=drehen;
-  
+
   sollwert=rastTemp[x];
- 
+
   if (isttemp >= sollwert)  // Sollwert erreicht ?
-   {
+  {
     modus++;                //zur Zeitautomatik
     anfang=0;
-   }
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1336,112 +1433,103 @@ void funktion_tempautomatik()      //Modus=28
 void funktion_zeitautomatik()      //Modus=29
 {
   if (anfang == 0)
-    {
+  {
     drehen=rastZeit[x];                //Zuordnung für Encoder
-    }
+  }
 
-  if (rastZeit[x] < 10)
-   {
-   myGLCD.print(" ", 46, 16);
-   myGLCD.printNumI(rastZeit[x], 52, 16);
-   myGLCD.print("min", 66, 16);
-   }
-  else
-   {
-   myGLCD.printNumI(rastZeit[x], 46, 16);
-   myGLCD.print("min", 66, 16);
-   }
+  print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
-  
   // Zeitzählung---------------
   if (anfang == 0)
   {
-  myGLCD.print("Set Time", 0, 24);
+    print_lcd("Set Time", LEFT, 3);
 
-  setTime(00,00,00,00,01,01);   //.........Sekunden auf 0 stellen
+    setTime(00,00,00,00,01,01);   //.........Sekunden auf 0 stellen
 
-  delay(400); //test
-  
-  sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
-  minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
-  stunden=hour();       //aktuell Stunde abspeichern für die Zeitrechnung
+    delay(400); //test
 
-  myGLCD.print("            ", 0, 24);
-  anfang=1;
+    sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
+    minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
+    stunden=hour();       //aktuell Stunde abspeichern für die Zeitrechnung
+
+    print_lcd("            ", 0, 3);
+    anfang=1;
   }
-  
-                   
-  myGLCD.print("00:00", 0, 16);
-  
-  if (sekunden < 10)
-    {
-    myGLCD.printNumI(sekunden, 24, 16);
-    }
-    else
-    {
-    myGLCD.printNumI(sekunden, 18, 16);
-    }
 
-  if (stunden == 0)
+
+  print_lcd("00z00", LEFT, 2);
+
+  if (sekunden < 10)
+  {
+    printNumI_lcd(sekunden, 4, 2);
+  }
+  else
+  {
+    printNumI_lcd(sekunden, 3, 2);
+  }
+
+  if (stunden == 0) {
     minuten=minutenwert;
-   else
+  }
+  else {
     minuten=((stunden*60) + minutenwert);
-    
+  }
+
   if (minuten < 10)
-   {
-    myGLCD.printNumI(minuten, 6, 16);
-    }
-    else
-    {
-    myGLCD.printNumI(minuten, 0, 16);
-    }
+  {
+    printNumI_lcd(minuten, 1, 2);
+  }
+  else
+  {
+    printNumI_lcd(minuten, 0, 2);
+  }
   // Ende Zeitzählung---------------------
-  
+
   rastZeit[x]=drehen;     //Encoderzuordnung
-  
+
   if (minuten >= rastZeit[x])  // Sollwert erreicht ?
-    { 
+  { 
     anfang=0;
     y=x;
     if (x < rasten)
-      {
+    {
       modus--;                // zur Temperaturregelung
       x++;                    // nächste Stufe
-      }
+    }
     else
-      {
+    {
       x=1;                                //Endtemperatur
       modus++;                            //Endtemperatur
-      }
-    
+    }
+
     if (braumeister[y] > 0)
-      {
+    {
       rufmodus=modus;
       modus=31;
-      }  
-    }
- }
+    }  
+  }
+}
 //------------------------------------------------------------------ 
 
 
 // Funktion Automatik Endtemperatur---------------------------------
 void funktion_endtempautomatik()      //Modus=30
 {
- if (anfang == 0)
+  if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Auto", LEFT, 0);
-    myGLCD.print("Endtemp", RIGHT, 0);
-   drehen=endtemp;      //Zuordnung Encoder
-   anfang=1;
+    lcd.clear();
+    print_lcd("Auto", LEFT, 0);
+    print_lcd("Endtemp", RIGHT, 0);
+    drehen=endtemp;      //Zuordnung Encoder
+    anfang=1;
   }
 
   endtemp=drehen;
 
   sollwert=endtemp;
-    
+
   if (isttemp >= sollwert)  // Sollwert erreicht ?
-    {
+  {
     modus=80;                  //Abbruch
     rufmodus=modus;
     modus=31;
@@ -1449,7 +1537,7 @@ void funktion_endtempautomatik()      //Modus=30
     heizung=0;                 //Heizung aus
     y=0;
     braumeister[y]=1;
-    }   
+  }   
 }
 //------------------------------------------------------------------
 
@@ -1458,55 +1546,59 @@ void funktion_endtempautomatik()      //Modus=30
 void funktion_braumeisterrufalarm()      //Modus=31
 {
   if (anfang == 0)
-   {
-     rufsignalzeit=millis();
-     anfang=1;
-   }
+  {
+    rufsignalzeit=millis();
+    anfang=1;
+  }
 
   if (millis() >= (altsekunden+1000))   //Bliken der Anzeige und RUF
-   {                                      
-   myGLCD.print("            ", RIGHT, 24); 
-   digitalWrite(schalterB, LOW); 
-   if (millis() >= (altsekunden+1500))
-     {
-     altsekunden=millis();
-     pause++;
-     }
-   }                                   
+  {                                      
+    print_lcd("          ", LEFT, 3); 
+    digitalWrite(schalterB, LOW); 
+    if (millis() >= (altsekunden+1500))
+    {
+      altsekunden=millis();
+      pause++;
+    }
+  }                                   
   else           
-   {
-   myGLCD.print("RUF", RIGHT, 24);
-   if (pause <= 4)
-     {
-     digitalWrite(schalterB, HIGH);
-      }
-   if (pause > 8)
-     pause=0;
-   }                                   //Bliken der Anzeige und RUF
- 
- 
- if ((pause == 4) || (pause == 8))     //Funkalarm schalten
-   digitalWrite(schalterF, HIGH);    //Funkalarm ausschalten
-  else
-   digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+  {
+    print_lcd("RUF", LEFT, 3);
+    if (pause <= 4)
+    {
+      digitalWrite(schalterB, HIGH);
+    }
+    if (pause > 8) {
+      pause=0;
+    }
+  }                                   //Bliken der Anzeige und RUF
 
 
- //20 Sekunden Rufsignalisierung wenn "Ruf Signal" 
- if (braumeister[y] == 2 && millis()>= (rufsignalzeit+20000))
-      {
-        anfang=0;
-        pause=0;
-        digitalWrite(schalterB, LOW);   // Alarm ausschalten
-        digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
-        modus=rufmodus;
-        einmaldruck=false;
-      }
- //weiter mit Programmablauf
- 
-  if (ButtonPressed == 0)
+  if ((pause == 4) || (pause == 8))     //Funkalarm schalten
+  {
+    digitalWrite(schalterF, HIGH);    //Funkalarm ausschalten
+  }  
+  else {
+    digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+  }
+
+  //20 Sekunden Rufsignalisierung wenn "Ruf Signal" 
+  if (braumeister[y] == 2 && millis()>= (rufsignalzeit+20000))
+  {
+    anfang=0;
+    pause=0;
+    digitalWrite(schalterB, LOW);   // Alarm ausschalten
+    digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+    modus=rufmodus;
+    einmaldruck=false;
+  }
+  //weiter mit Programmablauf
+
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
@@ -1516,12 +1608,14 @@ void funktion_braumeisterrufalarm()      //Modus=31
       digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
       if (braumeister[y] == 2)
       {
-       myGLCD.print("   ", RIGHT, 24);
-       modus=rufmodus;
+        print_lcd("   ", LEFT, 3);
+        modus=rufmodus;
       }
-      else
-       modus++;
-    }             
+      else {
+        modus++;
+      }
+    }  
+  }           
 }
 //------------------------------------------------------------------
 
@@ -1530,40 +1624,42 @@ void funktion_braumeisterrufalarm()      //Modus=31
 void funktion_braumeisterruf()      //Modus=32
 {
   if (anfang == 0)
-    {
+  {
     anfang=1;
-    }
+  }
 
 
   if (millis() >= (altsekunden+1000))
-   {
-   myGLCD.print("        ", RIGHT, 24);
-   if (millis() >= (altsekunden+1500))
-     altsekunden=millis();
-   }
-   else
-   myGLCD.print("weiter ?", RIGHT, 24);
+  {
+    print_lcd("        ", LEFT, 3);
+    if (millis() >= (altsekunden+1500)) {
+      altsekunden=millis();
+    }
+  }
+  else {
+    print_lcd("weiter ?", LEFT, 3);
+  }
 
-  
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
-
+  }
   if (einmaldruck == true)
-    if (ButtonPressed == 1)
+    if (ButtonPressed == 1) {
       { 
-      einmaldruck=false;
-      myGLCD.print("        ", RIGHT, 24);     //Text "weiter ?" löschen
-      
-      myGLCD.print("             ", RIGHT, 32); //Löscht Text bei
-      sensorfehler=0;                           //Sensorfehler oder Alarmtest
-      
-      anfang=0;
-      modus=rufmodus;
-      delay(500);     //kurze Wartezeit, damit nicht
-                      //durch unbeabsichtigtes Drehen
-                      //der nächste Vorgabewert
-                      //verstellt wird 
+        einmaldruck=false;
+        print_lcd("        ", LEFT, 3);     //Text "weiter ?" löschen
+
+        print_lcd("             ", RIGHT, 3); //Löscht Text bei
+        sensorfehler=0;                           //Sensorfehler oder Alarmtest
+
+        anfang=0;
+        modus=rufmodus;
+        delay(500);     //kurze Wartezeit, damit nicht
+        //durch unbeabsichtigtes Drehen
+        //der nächste Vorgabewert
+        //verstellt wird 
       }
+    }
 }
 //------------------------------------------------------------------ 
 
@@ -1571,19 +1667,19 @@ void funktion_braumeisterruf()      //Modus=32
 // Funktion Kochzeit------------------------------------------------- 
 void funktion_kochzeit()      //Modus=40
 {
- if (anfang == 0)
+  if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Kochen", RIGHT, 0);
-    myGLCD.print("Zeit", LEFT, 16);
-    
+    lcd.clear();
+    print_lcd("Kochen", RIGHT, 0);
+    print_lcd("Zeit", LEFT, 1);
+
     fuenfmindrehen=kochzeit;
     anfang=1;
   }
- 
- kochzeit=fuenfmindrehen; //5min-Sprünge
- 
- if (kochzeit <= 20)
+
+  kochzeit=fuenfmindrehen; //5min-Sprünge
+
+  if (kochzeit <= 20)
   {
     kochzeit=20;
     fuenfmindrehen=20;
@@ -1593,47 +1689,39 @@ void funktion_kochzeit()      //Modus=40
     kochzeit=180;
     fuenfmindrehen=180;
   }
- 
- if (kochzeit < 100)
-  {  
-    myGLCD.print(" ", 42, 16);
-    myGLCD.printNumI(kochzeit, 48, 16);
-    myGLCD.print("min", RIGHT, 16);
-  }
-  else
-  {
-    myGLCD.printNumI(kochzeit, 42, 16);
-    myGLCD.print("min", RIGHT, 16);
-  }
- 
-  if (ButtonPressed == 0)
-    einmaldruck=true;
 
-  if (einmaldruck == true)
+  print_lcd_minutes( kochzeit, 5, 1);
+
+  if (ButtonPressed == 0) {
+    einmaldruck=true;
+  }
+
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
 // Funktion Anzahl der Hopfengaben------------------------------------------   
 void funktion_anzahlhopfengaben()      //Modus=41
 {
- if (anfang == 0)
+  if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Kochen", RIGHT, 0);
-    myGLCD.print("Hopfengaben", LEFT, 16);
-    
+    lcd.clear();
+    print_lcd("Kochen", RIGHT, 0);
+    print_lcd("Hopfengaben", LEFT, 1);
+
     drehen=hopfenanzahl;
     anfang=1;
   }
- 
+
   hopfenanzahl=drehen;
-  
+
   if (hopfenanzahl <= 1)
   {
     hopfenanzahl=1;
@@ -1644,19 +1732,21 @@ void funktion_anzahlhopfengaben()      //Modus=41
     hopfenanzahl=5;
     drehen=5;
   } 
-  
-  myGLCD.printNumI(hopfenanzahl, RIGHT, 16);
 
-  if (ButtonPressed == 0)
+  printNumI_lcd(hopfenanzahl, RIGHT, 1);
+
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1669,71 +1759,53 @@ void funktion_hopfengaben()      //Modus=42
     x=1;
     fuenfmindrehen=hopfenZeit[x];
     anfang=1;
-    myGLCD.clrScr();
-    myGLCD.print("Kochen", RIGHT, 0);
+    lcd.clear();
+    print_lcd("Kochen", RIGHT, 0);
   }
-  
-  myGLCD.printNumI(x, LEFT, 8);
-  myGLCD.print(". Hopfengabe", 8, 8);
-  myGLCD.print("nach", LEFT, 16); 
-  
+
+  printNumI_lcd(x, LEFT, 1);
+  print_lcd(". Hopfengabe", 1, 1);
+  print_lcd("nach", LEFT, 2); 
+
   hopfenZeit[x]=fuenfmindrehen;
-  
-  
+
+
   if (hopfenZeit[x] <= (hopfenZeit[(x-1)]+5))
-   {
+  {
     hopfenZeit[x]=(hopfenZeit[(x-1)]+5);
     fuenfmindrehen=(hopfenZeit[(x-1)]+5);
-   } 
+  } 
   if (hopfenZeit[x] >= (kochzeit-5))
-   {
+  {
     hopfenZeit[x]=(kochzeit-5);
     fuenfmindrehen=(kochzeit-5);
-   }
-  
+  }
 
-  if (hopfenZeit[x] < 10)
-  {
-  myGLCD.print("  ", 42, 16);
-  myGLCD.printNumI(hopfenZeit[x], 54, 16);
-  myGLCD.print("min", RIGHT, 16);
-  }
-  
-  if ((hopfenZeit[x] < 100) && (hopfenZeit[x] >= 10))
-  {
-  myGLCD.print(" ", 42, 16);
-  myGLCD.printNumI(hopfenZeit[x], 48, 16);
-  myGLCD.print("min", RIGHT, 16);
-  }
-  
-  if (hopfenZeit[x] >= 100)
-  {
-  myGLCD.printNumI(hopfenZeit[x], 42, 16);
-  myGLCD.print("min", RIGHT, 16);
-  }
-  
+  print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
 
-  if (ButtonPressed == 0)
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       if (x < hopfenanzahl)
       {
         x++;
-        myGLCD.print("  ", LEFT, 8);
-        myGLCD.print("   ", 42, 16);
+        print_lcd("  ", LEFT, 1);
+        print_lcd("   ", 13, 2);
         delay(400);
       }      
       else
       {
-      x=1;
-      modus++;
-      anfang=0;
+        x=1;
+        modus++;
+        anfang=0;
       }
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1741,43 +1813,44 @@ void funktion_hopfengaben()      //Modus=42
 // Funktion Hopfengabenstart-------------------------------------------   
 void funktion_starthopfengaben()      //Modus=43
 {
-if (anfang == 0)
-    {
-    myGLCD.clrScr();
-    myGLCD.print("Kochen", RIGHT, 0);
+  if (anfang == 0)
+  {
+    lcd.clear();
+    print_lcd("Kochen", RIGHT, 0);
     anfang=1;
     delay(1000);    //kurze Wartezeit, damit die Startbestätigung
-                    //nicht einfach "überdrückt" wird
+    //nicht einfach "überdrückt" wird
     altsekunden=millis();
-    }
+  }
 
   if (millis() >= (altsekunden+1000))
   {
-  myGLCD.print("       ", CENTER, 16);
-   if (millis() >= (altsekunden+1500))
-     altsekunden=millis();
+    print_lcd("       ", CENTER, 2);
+    if (millis() >= (altsekunden+1500))
+      altsekunden=millis();
+  }
+  else {
+    print_lcd("Start ?", CENTER, 2);
+  }
+
+
+  if (isttemp >= 98)
+  {
+    digitalWrite(schalterB, HIGH);
+    digitalWrite(schalterF, HIGH);
+    print_lcd("Kochbeginn", CENTER, 1);
   }
   else
-  myGLCD.print("Start ?", CENTER, 16);
+  {
+    print_lcd("Zeitablauf", CENTER, 1);
+  }
 
-  
-  
-  if (isttemp >= 98)
-   {
-   digitalWrite(schalterB, HIGH);
-   digitalWrite(schalterF, HIGH);
-   myGLCD.print("Kochbeginn", CENTER, 24);
-   }
-   else
-   {
-   myGLCD.print("Zeitablauf", CENTER, 24);
-   }
-    
-    
-  if (ButtonPressed == 0)
+
+  if (ButtonPressed == 0) {
     einmaldruck=true;
+  }
 
-  if (einmaldruck == true)
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       digitalWrite(schalterB, LOW);   //Ruf ausschalten
@@ -1786,6 +1859,7 @@ if (anfang == 0)
       anfang=0;
       modus++;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -1797,154 +1871,163 @@ void funktion_hopfenzeitautomatik()      //Modus=44
   {
     x=1;
     anfang=1;
-    myGLCD.clrScr();
-    myGLCD.print("Kochen", RIGHT, 0);
-    
-   if (kochzeit < 10)
-    {
-     myGLCD.print("  ", 46, 8);
-     myGLCD.printNumI(kochzeit, 58, 8);
-     myGLCD.print("min", 66, 8);
-    }
-    
-   if ((kochzeit >= 10) && (kochzeit < 100))
-    {
-     myGLCD.print(" ", 46, 8);
-     myGLCD.printNumI(kochzeit, 52, 8);
-     myGLCD.print("min", 66, 8);
-    }
-    
-    if (kochzeit >= 100)
-    {
-     myGLCD.printNumI(kochzeit, 46, 8);
-     myGLCD.print("min", 66, 8);
-    }
-    
-    
-    myGLCD.print("Set Time", 0, 24);
-  
+    lcd.clear();
+    print_lcd("Kochen", RIGHT, 0);
+
+    print_lcd("Set Time", LEFT, 0);
+
     setTime(00,00,00,00,01,01);   //.........Sekunden auf 0 stellen
-  
+
     delay(400); //test
-    myGLCD.print("         ", 0, 24);
-    
+    print_lcd("         ", LEFT, 0);
+
+    print_lcd_minutes(hopfenZeit[x], LEFT, 0);
+    /*if (kochzeit < 10)
+     {
+     print_lcd("  ", LEFT, 0);
+     printNumI_lcd(kochzeit, 2, 0);
+     }
+     if ((kochzeit >= 10) && (kochzeit < 100))
+     {
+     print_lcd(" ", LEFT, 0);
+     printNumI_lcd(kochzeit, 1, 0);
+     }
+     if (kochzeit >= 100)
+     {
+     printNumI_lcd(kochzeit, 0, 0);
+     }
+     */
+    //print_lcd("min", 4, 0);
+
     sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
     minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
     stunden=hour();       //aktuell Stunde abspeichern für die Zeitrechnung
 
     anfang=1;    
   }
-   
-   
+
+
   if (x <= hopfenanzahl)
-   { 
-    myGLCD.printNumI(x, LEFT, 24);
-    myGLCD.print(".Gabe bei", 6, 24);
+  { 
+    printNumI_lcd(x, LEFT, 2);
+    print_lcd(". Gabe bei ", 1, 2);
+
+    print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
+    /*
     if (hopfenZeit[x] < 10)
-    {
-     myGLCD.print("  ", 66, 24);
-     myGLCD.printNumI(hopfenZeit[x], 78, 24);
-    }
-    if ((hopfenZeit[x] >= 10) && (hopfenZeit[x] < 100))
-    {
-     myGLCD.print(" ", 66, 24);
-     myGLCD.printNumI(hopfenZeit[x], 72, 24);
-    }
-    if (hopfenZeit[x] > 100)
-    {
-     myGLCD.printNumI(hopfenZeit[x], 66, 24);
-    }
-   }
-   else
-     myGLCD.print("                    ", 0, 24);
- 
-  
-  myGLCD.print("00:00", 6, 8);
-  
+     {
+     print_lcd("  ", 13, 2);
+     printNumI_lcd(hopfenZeit[x], 15, 2);
+     }
+     if ((hopfenZeit[x] >= 10) && (hopfenZeit[x] < 100))
+     {
+     print_lcd(" ", 13, 2);
+     printNumI_lcd(hopfenZeit[x], 14, 2);
+     }
+     if (hopfenZeit[x] > 100)
+     {
+     printNumI_lcd(hopfenZeit[x], 13, 2);
+     }
+     */
+    //print_lcd("min", RIGHT, 2);
+  }
+  else
+    print_lcd("                    ", 0, 2);
+
+
+  print_lcd("00:00", 11, 1);
+  print_lcd("min", RIGHT, 1);
+
   if (sekunden < 10)
-    {
-    myGLCD.printNumI(sekunden, 30, 8);
-    }
-    else
-    {
-    myGLCD.printNumI(sekunden, 24, 8);
-    }
+  {
+    printNumI_lcd(sekunden, 15, 1);
+  }
+  else
+  {
+    printNumI_lcd(sekunden, 14, 1);
+  }
 
   minuten=((stunden*60) + minutenwert);
-    
+
   if (minuten < 10)
-    {
-     myGLCD.printNumI(minuten, 12, 8);
-    }
-    
+  {
+    printNumI_lcd(minuten, 12, 1);
+  }
+
   if ((minuten >= 10) && (minuten < 100))
-    {
-    myGLCD.printNumI(minuten, 6, 8);
-    }
-    
+  {
+    printNumI_lcd(minuten, 11, 1);
+  }
+
   if (minuten >= 100)
-    {
-    myGLCD.printNumI(minuten, 0, 8);
-    }
-  
-  
+  {
+    printNumI_lcd(minuten, 10, 1);
+  }
+
+
   if ((minuten == hopfenZeit[x]) && (x <= hopfenanzahl))    // Hopfengabe
   {
-  //Alarm -----
-   if (millis() >= (altsekunden+1000))   //Bliken der Anzeige und RUF
+    //Alarm -----
+    if (millis() >= (altsekunden+1000))   //Bliken der Anzeige und RUF
     {                                      
-     myGLCD.print("        ", RIGHT, 24); 
-     digitalWrite(schalterB, LOW); 
-     if (millis() >= (altsekunden+1500))
+      print_lcd("        ", RIGHT, 3); 
+      digitalWrite(schalterB, LOW); 
+      if (millis() >= (altsekunden+1500))
       {
-      altsekunden=millis();
-      pause++;
+        altsekunden=millis();
+        pause++;
       }
-     }                                   
+    }                                   
     else           
-     {
-      myGLCD.print("RUF", RIGHT, 24);
-     if (pause <= 4)
-       {
-       digitalWrite(schalterB, HIGH);
-       }
-      if (pause > 8)
-       pause=0;
-     }                                   //Bliken der Anzeige und RUF
- 
- 
-   if ((pause == 4) || (pause == 8))     //Funkalarm schalten
-     digitalWrite(schalterF, HIGH);    //Funkalarm einschalten
-    else
-     digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
-    //-----------
- 
-    
-    if (ButtonPressed == 0)
-     einmaldruck=true;
+    {
+      print_lcd("RUF", RIGHT, 3);
+      if (pause <= 4)
+      {
+        digitalWrite(schalterB, HIGH);
+      }
+      if (pause > 8) {
+        pause=0;
+      }
+    }                                   //Bliken der Anzeige und RUF
 
-    if (einmaldruck == true)
+
+    if ((pause == 4) || (pause == 8))     //Funkalarm schalten
+    {
+      digitalWrite(schalterF, HIGH);    //Funkalarm einschalten
+    }  
+    else {
+      digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+    }
+    //-----------
+
+
+    if (ButtonPressed == 0) {
+      einmaldruck=true;
+    }
+
+    if (einmaldruck == true) {
       if (ButtonPressed == 1)
       { 
-       einmaldruck=false;
-       pause=0;
-       digitalWrite(schalterB, LOW);   // Alarm ausschalten
-       digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
-       x++;
+        einmaldruck=false;
+        pause=0;
+        digitalWrite(schalterB, LOW);   // Alarm ausschalten
+        digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+        x++;
       }             
+    }
   }
-  
- if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl))    // Alarmende nach 1 Minute
-      {
-      pause=0;
-      digitalWrite(schalterB, LOW);   // Alarm ausschalten
-      digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
-      x++;
-      }
-  
- 
+
+  if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl))    // Alarmende nach 1 Minute
+  {
+    pause=0;
+    digitalWrite(schalterB, LOW);   // Alarm ausschalten
+    digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+    x++;
+  }
+
+
   if (minuten >= kochzeit)     //Kochzeitende
-    {
+  {
     modus=80;                  //Abbruch nach Rufalarm
     rufmodus=modus;
     modus=31;
@@ -1952,10 +2035,10 @@ void funktion_hopfenzeitautomatik()      //Modus=44
     heizung=0;                 //Heizung aus
     y=0;
     braumeister[y]=1;
-    }
-  
-  
-  
+  }
+
+
+
 }
 //------------------------------------------------------------------ 
 
@@ -1963,19 +2046,19 @@ void funktion_hopfenzeitautomatik()      //Modus=44
 // Funktion Timer-------------------------------------------------
 void funktion_timer()      //Modus=60
 {
- if (anfang == 0)
+  if (anfang == 0)
   {
-    myGLCD.clrScr();
-    myGLCD.print("Timer", RIGHT, 0);
-    myGLCD.print("Zeit", LEFT, 16);
-    
+    lcd.clear();
+    print_lcd("Timer", RIGHT, 0);
+    print_lcd("Zeit", LEFT, 2);
+
     drehen=timer;
     anfang=1;
   }
- 
- timer=drehen;
- 
- if (timer <= 1)
+
+  timer=drehen;
+
+  if (timer <= 1)
   {
     timer=1;
     drehen=1;
@@ -1985,29 +2068,21 @@ void funktion_timer()      //Modus=60
     timer=99;
     drehen=99;
   }
- 
- if (timer < 10)
-  {  
-    myGLCD.print(" ", 52, 16);
-    myGLCD.printNumI(timer, 58, 16);
-    myGLCD.print("min", RIGHT, 16);
-  }
-  else
-  {
-    myGLCD.printNumI(timer, 52, 16);
-    myGLCD.print("min", RIGHT, 16);
-  }
- 
-  if (ButtonPressed == 0)
-    einmaldruck=true;
 
-  if (einmaldruck == true)
+  print_lcd_minutes(timer, RIGHT, 2);
+
+  if (ButtonPressed == 0) {
+    einmaldruck=true;
+  }
+
+  if (einmaldruck == true) {
     if (ButtonPressed == 1)
     { 
       einmaldruck=false;
       modus++;
       anfang=0;
     } 
+  }
 }
 //------------------------------------------------------------------ 
 
@@ -2018,73 +2093,75 @@ void funktion_timerlauf()      //Modus=61
   if (anfang == 0)
   {
     drehen=timer;
-    
+
     anfang=1;
-    myGLCD.clrScr();
-    myGLCD.print("Timer", RIGHT, 0);
-     
-    myGLCD.print("Set Time", 0, 16);
-  
+    lcd.clear();
+    print_lcd("Timer", RIGHT, 0);
+
+    print_lcd("Set Time", LEFT, 0);
+
     setTime(00,00,00,00,01,01);   //.........Sekunden auf 0 stellen
-  
+
     delay(400); //test
-    myGLCD.print("         ", 0, 16);
-    
+    print_lcd("         ", LEFT, 0);
+
     sekunden=second();    //aktuell Sekunde abspeichern für die Zeitrechnung
     minutenwert=minute(); //aktuell Minute abspeichern für die Zeitrechnung
     stunden=hour();       //aktuell Stunde abspeichern für die Zeitrechnung
 
     anfang=1;    
   }
-   
-   
+
+
   timer=drehen;
-   
-     
+
+
   if (timer >= 99)
-   {
-     timer=99;
-     drehen=99;
-   }
-  
+  {
+    timer=99;
+    drehen=99;
+  }
+
+  print_lcd_minutes(timer, RIGHT, 2);
+  /*
   if (timer < 10)
    {  
-     myGLCD.print(" ", 52, 16);
-     myGLCD.printNumI(timer, 58, 16);
-     myGLCD.print("min", RIGHT, 16);
+   print_lcd(" ", 14, 2);
+   printNumI_lcd(timer, 15, 2);
    }
    else
    {
-     myGLCD.printNumI(timer, 52, 16);
-     myGLCD.print("min", RIGHT, 16);
+   printNumI_lcd(timer, 14, 2); 
    }
-  
-  
-  myGLCD.print("00:00", 6, 16);
-  
+   */
+  //print_lcd("min", RIGHT, 2);
+
+
+  print_lcd("00:00", LEFT, 2);
+
   if (sekunden < 10)
-    {
-    myGLCD.printNumI(sekunden, 30, 16);
-    }
-    else
-    {
-    myGLCD.printNumI(sekunden, 24, 16);
-    }
+  {
+    printNumI_lcd(sekunden, 4, 2);
+  }
+  else
+  {
+    printNumI_lcd(sekunden, 3, 2);
+  }
 
   minuten=((stunden*60) + minutenwert);
-    
+
   if (minuten < 10)
-    {
-     myGLCD.printNumI(minuten, 12, 16);
-    }
-    else
-    {
-    myGLCD.printNumI(minuten, 6, 16);
-    }
-    
-    
+  {
+    printNumI_lcd(minuten, 1, 2);
+  }
+  else
+  {
+    printNumI_lcd(minuten, 0, 2);
+  }
+
+
   if (minuten >= timer)     //Timerende
-    {
+  {
     modus=80;                  //Abbruch nach Rufalarm
     rufmodus=modus;
     modus=31;
@@ -2092,10 +2169,10 @@ void funktion_timerlauf()      //Modus=61
     heizung=0;                 //Heizung aus
     y=0;
     braumeister[y]=1;
-    }
-  
-  
-  
+  }
+
+
+
 }
 //------------------------------------------------------------------ 
 
@@ -2110,7 +2187,7 @@ void funktion_abbruch()       // Modus 80
   digitalWrite(schalterB, LOW);   // ausschalten
   digitalWrite(schalterF, LOW);   // ausschalten
   anfang=0;                       //Daten zurücksetzen
-  myGLCD.clrScr();                //Rastwerteeingaben
+  lcd.clear();                //Rastwerteeingaben
   rufmodus=0;                     //bleiben erhalten
   x=1;                            //bei
   y=1;                            //asm volatile ("  jmp 0"); 
@@ -2119,13 +2196,37 @@ void funktion_abbruch()       // Modus 80
   nachgussruf=false;
   pause=0;
   drehen=sollwert;            //Zuweisung für Funktion Temperaturregelung
- 
+
   if (millis() >= (abbruchtaste + 5000)) //länger als 5 Sekunden drücken
+  {
     modus=10;                      //Alarmtest
-  else
-     modus=0;                      //Hauptmenue
-  
+  } 
+  else {
+    modus=0;                      //Hauptmenue
+  }
   // asm volatile ("  jmp 0");       //reset Arduino
 }
 //------------------------------------------------------------------
+
+void print_lcd_minutes (int value, int x, int y) {
+  if (x == RIGHT) {
+    x = 19-(3+4);
+  }
+
+  if (value < 10)
+  {
+    print_lcd("  ", x, y);
+    printNumI_lcd(value, x+2, y);
+  }
+  if ((value < 100) && (value >= 10))
+  {
+    print_lcd(" ", x, y);
+    printNumI_lcd(value, x+1, y);
+  }
+  if (value >= 100)
+  {
+    printNumI_lcd(value, x, y);
+  }
+  print_lcd(" min", x+3, y);
+}
 
