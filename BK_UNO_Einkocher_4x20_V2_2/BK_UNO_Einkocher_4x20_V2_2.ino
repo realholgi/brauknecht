@@ -214,15 +214,10 @@ void print_lcd (char *st, int x, int y)
     if (x == CENTER) {
         x = (20 - stl) / 2;
     }
-    if (x < 0) {
-        x = 0;
-    }
-    if (x > 19) {
-        x = 19;
-    }
-    if (y > 3) {
-        y = 3;
-    }
+
+    x = constrain(x, 0, 19);
+    y = constrain(y, 0, 3);
+
     lcd.setCursor(x, y);
     lcd.print(st);
 }
@@ -250,7 +245,6 @@ void setup()
     //Serial.println("Test");         //.........Test Serial
 
     drehen = sollwert;
-    //drehen=sollwert;
 
     pinMode(schalterH1, OUTPUT);   // initialize the digital pin as an output.
     pinMode(schalterH2, OUTPUT);   // initialize the digital pin as an output.
@@ -260,7 +254,6 @@ void setup()
     digitalWrite(schalterH1, HIGH);   // ausschalten
     digitalWrite(schalterH2, HIGH);   // ausschalten
 
-
     pinMode(taster, INPUT);                    // Pin für Taster
     digitalWrite(taster, HIGH);                // Turn on internal pullup resistor
 
@@ -269,16 +262,13 @@ void setup()
     pinMode(3, INPUT);                    // Pin für Drehgeber
     digitalWrite(3, HIGH);                // Turn on internal pullup resistor
 
-
     attachInterrupt(0, isr_2, FALLING);   // Call isr_2 when digital pin 2 goes LOW
     attachInterrupt(1, isr_3, FALLING);   // Call isr_3 when digital pin 3 goes LOW
 
 
     //LCD Setup ------------------------------------------------------
     lcd.init();
-
     lcd.createChar(8, degC);         // Celsius
-
     lcd.backlight();
     lcd.clear();
 
@@ -507,8 +497,8 @@ void loop()
     //Ende Kochen -----------------------------------------------------------
 
     // Drehgeber und Tastenabfrage -------------------------------------------------
-    isr_2();   //drehgeber abfragen
-    isr_3();   //drehgeber abfragen
+    //isr_2();   //drehgeber abfragen FIXME?
+    //isr_3();   //drehgeber abfragen FIXME?
     getButton();  //Taster abfragen
     //---------------------------------------------------------------
 
@@ -746,12 +736,7 @@ void funktion_hauptschirm()      //Modus=0
         anfang = 1;
     }
 
-    if (drehen <= 0) {
-        drehen = 0;
-    }
-    if (drehen >= 3) {
-        drehen = 3;
-    }
+    drehen = constrain(drehen, 0, 3);
 
     if (drehen == 0) {
         rufmodus = MAISCHEN;
@@ -820,13 +805,7 @@ void funktion_maischmenue()      //Modus=01
         anfang = 1;
     }
 
-
-    if (drehen <= 0) {
-        drehen = 0;
-    }
-    if (drehen >= 2) {
-        drehen = 2;
-    }
+    drehen = constrain(drehen, 0, 2);
 
     if (drehen == 0) {
         rufmodus = MANUELL;
@@ -993,16 +972,8 @@ void funktion_rastanzahl()          //Modus=19
         }
     }
 
+    drehen = constrain(drehen, 1, 5);
     rasten = drehen;
-
-    if (rasten <= 1) {
-        rasten = 1;
-        drehen = 1;
-    }
-    if (rasten >= 5) {
-        rasten = 5;
-        drehen = 5;
-    }
 
     printNumI_lcd(rasten, 19, 1);
 
@@ -1023,14 +994,8 @@ void funktion_maischtemperatur()      //Modus=20
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 10, 105);
     maischtemp = drehen;
-
-    if (maischtemp <= 10) {
-        maischtemp = 10;
-    }
-    if (maischtemp >= 105) {
-        maischtemp = 105;
-    }
 
     print_lcd("Maischtemp", LEFT, 1);
     printNumF_lcd(int(maischtemp), 15, 1);
@@ -1054,17 +1019,8 @@ void funktion_rasteingabe()      //Modus=21
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 9, 105);
     rastTemp[x] = drehen;
-
-    if (rastTemp[x] <= 10) {
-        rastTemp[x] = 9;
-        drehen = 9;
-    }
-    if (rastTemp[x] >= 105) {
-        rastTemp[x] = 105;
-        drehen = 105;
-    }
-
 
     printNumI_lcd(x, LEFT, 1);
     print_lcd(". Rast", 1, 1);
@@ -1086,16 +1042,8 @@ void funktion_zeiteingabe()      //Modus=22
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 1, 99);
     rastZeit[x] = drehen;
-
-    if (rastZeit[x] <= 1) {
-        rastZeit[x] = 1;
-        drehen = 1;
-    }
-    if (rastZeit[x] >= 99) {
-        rastZeit[x] = 99;
-        drehen = 99;
-    }
 
     print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
@@ -1115,13 +1063,7 @@ void funktion_braumeister() //Modus=24
 
     //delay(200);
 
-    if (drehen < 0) {
-        drehen = 0;
-    }
-
-    if (drehen > 2) {
-        drehen = 2;
-    }
+    drehen = constrain( drehen, 0, 2);
     braumeister[x] = (BM_ALARM_MODE)drehen;
 
     print_lcd("Ruf", LEFT, 2);
@@ -1169,14 +1111,9 @@ void funktion_endtempeingabe()      //Modus=25
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 10, 80);
     endtemp = drehen;
 
-    if (endtemp <= 10) {
-        endtemp = 10;
-    }
-    if (endtemp >= 80) {
-        endtemp = 80;
-    }
     print_lcd("Endtemperatur", LEFT, 1);
     printNumF_lcd(int(endtemp), 15, 1);
     lcd.setCursor(19, 1);
@@ -1221,7 +1158,6 @@ void funktion_maischtemperaturautomatik()      //Modus=27
     }
 
     maischtemp = drehen;
-
     sollwert = maischtemp;
 
     if (isttemp >= sollwert) { // Sollwert erreicht ?
@@ -1340,7 +1276,6 @@ void funktion_endtempautomatik()      //Modus=30
     }
 
     endtemp = drehen;
-
     sollwert = endtemp;
 
     if (isttemp >= sollwert) { // Sollwert erreicht ?
@@ -1475,16 +1410,8 @@ void funktion_kochzeit()      //Modus=40
         anfang = 1;
     }
 
+    fuenfmindrehen = constrain( fuenfmindrehen, 20, 180);
     kochzeit = fuenfmindrehen; //5min-Sprünge
-
-    if (kochzeit <= 20) {
-        kochzeit = 20;
-        fuenfmindrehen = 20;
-    }
-    if (kochzeit >= 180) {
-        kochzeit = 180;
-        fuenfmindrehen = 180;
-    }
 
     print_lcd_minutes( kochzeit, RIGHT, 1);
 
@@ -1504,16 +1431,8 @@ void funktion_anzahlhopfengaben()      //Modus=41
         anfang = 1;
     }
 
+    drehen = constrain(drehen, 1, 5);
     hopfenanzahl = drehen;
-
-    if (hopfenanzahl <= 1) {
-        hopfenanzahl = 1;
-        drehen = 1;
-    }
-    if (hopfenanzahl >= 5) {
-        hopfenanzahl = 5;
-        drehen = 5;
-    }
 
     printNumI_lcd(hopfenanzahl, RIGHT, 1);
 
@@ -1537,17 +1456,8 @@ void funktion_hopfengaben()      //Modus=42
     print_lcd(". Hopfengabe", 1, 1);
     print_lcd("nach", LEFT, 2);
 
+    fuenfmindrehen = constrain(fuenfmindrehen, hopfenZeit[(x - 1)] + 5, kochzeit - 5);
     hopfenZeit[x] = fuenfmindrehen;
-
-
-    if (hopfenZeit[x] <= (hopfenZeit[(x - 1)] + 5)) {
-        hopfenZeit[x] = (hopfenZeit[(x - 1)] + 5);
-        fuenfmindrehen = (hopfenZeit[(x - 1)] + 5);
-    }
-    if (hopfenZeit[x] >= (kochzeit - 5)) {
-        hopfenZeit[x] = (kochzeit - 5);
-        fuenfmindrehen = (kochzeit - 5);
-    }
 
     print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
 
@@ -1753,16 +1663,8 @@ void funktion_timer()      //Modus=60
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 1, 99);
     timer = drehen;
-
-    if (timer <= 1) {
-        timer = 1;
-        drehen = 1;
-    }
-    if (timer >= 99) {
-        timer = 99;
-        drehen = 99;
-    }
 
     print_lcd_minutes(timer, RIGHT, 2);
 
@@ -1794,11 +1696,9 @@ void funktion_timerlauf()      //Modus=61
         print_lcd("00:00", LEFT, 2);
     }
 
+    drehen = constrain(drehen, 1, 99);
     timer = drehen;
-    if (timer >= 99) {
-        timer = 99;
-        drehen = 99;
-    }
+
     print_lcd_minutes(timer, RIGHT, 2);
 
     if (sekunden < 10) {
@@ -1874,4 +1774,3 @@ void print_lcd_minutes (int value, int x, int y)
     }
     print_lcd(" min", x + 3, y);
 }
-
