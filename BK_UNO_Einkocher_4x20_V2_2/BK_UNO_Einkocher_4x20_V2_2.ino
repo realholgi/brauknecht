@@ -87,10 +87,18 @@ volatile boolean halfleft = false;      // Used in both interrupt routines
 volatile boolean halfright = false;     // Used in both interrupt routines
 
 int oldnumber = 0;
-int ButtonVoltage = 0;
 int ButtonPressed = 0;
-#define BUTTON_SELECT    5
-#define BUTTON_NONE      0
+
+enum PinAssignments {
+    encoderPinA = 2,   // rigtht
+    encoderPinB = 3,   // left
+    tasterPin = 5,    // another  pins
+    oneWirePin = 6,
+    schalterH1Pin = 7,  // Heizung Relais1
+    schalterH2Pin = 8,  // Heizung Relais2
+    schalterBPin = 14,  // Braumeisterruf A0
+    schalterFPin = 15, // Braumeisterruf A1
+};
 
 int drehen;        //drehgeber Werte
 int fuenfmindrehen;    //drehgeber Werte 5 Minutensprünge
@@ -103,11 +111,9 @@ int fuenfmindrehen;    //drehgeber Werte 5 Minutensprünge
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// Data wire is plugged into port 5 on the Arduino
-#define ONE_WIRE_BUS 6
 
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
+OneWire oneWire(oneWirePin);
 
 // Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
@@ -120,18 +126,6 @@ DeviceAddress insideThermometer;
 #include <Time.h>
 //------------------------------------------------------------------
 
-
-
-//Ausgänge an DigitalPIN --------------------------------------------
-int schalterH1 = 7;                                   //Zuordnung Heizung Relais1
-int schalterH2 = 8;                                   //Zuordnung Heizung Relais1
-int schalterB = 14;                                   //Zuordnung Braumeisterruf A0
-int schalterF = 15;                                   //Zuordnung Braumeisterruf A1
-//-----------------------------------------------------------------
-
-
-//Taster an Digital PIN--------------------------------------------
-int taster = 5;     // Taster am Pin 4 für Bestätigung und Abbruch
 int val = 0;           // Variable um Messergebnis zu speichern
 //-----------------------------------------------------------------
 
@@ -246,21 +240,21 @@ void setup()
 
     drehen = sollwert;
 
-    pinMode(schalterH1, OUTPUT);   // initialize the digital pin as an output.
-    pinMode(schalterH2, OUTPUT);   // initialize the digital pin as an output.
-    pinMode(schalterB, OUTPUT);   // initialize the digital pin as an output.
-    pinMode(schalterF, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(schalterH1Pin, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(schalterH2Pin, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(schalterBPin, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(schalterFPin, OUTPUT);   // initialize the digital pin as an output.
 
-    digitalWrite(schalterH1, HIGH);   // ausschalten
-    digitalWrite(schalterH2, HIGH);   // ausschalten
+    digitalWrite(schalterH1Pin, HIGH);   // ausschalten
+    digitalWrite(schalterH2Pin, HIGH);   // ausschalten
 
-    pinMode(taster, INPUT);                    // Pin für Taster
-    digitalWrite(taster, HIGH);                // Turn on internal pullup resistor
+    pinMode(tasterPin, INPUT);                    // Pin für Taster
+    digitalWrite(tasterPin, HIGH);                // Turn on internal pullup resistor
 
-    pinMode(2, INPUT);                    // Pin für Drehgeber
-    digitalWrite(2, HIGH);                // Turn on internal pullup resistor
-    pinMode(3, INPUT);                    // Pin für Drehgeber
-    digitalWrite(3, HIGH);                // Turn on internal pullup resistor
+    pinMode(encoderPinA, INPUT);                    // Pin für Drehgeber
+    digitalWrite(encoderPinA, HIGH);                // Turn on internal pullup resistor
+    pinMode(encoderPinB, INPUT);                    // Pin für Drehgeber
+    digitalWrite(encoderPinB, HIGH);                // Turn on internal pullup resistor
 
     attachInterrupt(0, isr_2, FALLING);   // Call isr_2 when digital pin 2 goes LOW
     attachInterrupt(1, isr_3, FALLING);   // Call isr_3 when digital pin 3 goes LOW
@@ -281,11 +275,11 @@ void setup()
 
     if (0) { // FIXME
         for (x = 1; x < 3; x++) {
-            digitalWrite(schalterB, HIGH);   // Alarmtest
-            digitalWrite(schalterF, HIGH);   // Funkalarmtest
+            digitalWrite(schalterBPin, HIGH);   // Alarmtest
+            digitalWrite(schalterFPin, HIGH);   // Funkalarmtest
             delay(200);
-            digitalWrite(schalterB, LOW);   // Alarm ausschalten
-            digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
             delay(200);
         }
     }
@@ -449,14 +443,14 @@ void loop()
                     break;
             }
         }
-        digitalWrite(schalterH1, LOW);   // einschalten
-        digitalWrite(schalterH2, LOW);   // einschalten
+        digitalWrite(schalterH1Pin, LOW);   // einschalten
+        digitalWrite(schalterH2Pin, LOW);   // einschalten
     } else {
         if (zeigeH) {
             print_lcd(" ", LEFT, 3);
         }
-        digitalWrite(schalterH1, HIGH);   // ausschalten
-        digitalWrite(schalterH2, HIGH);   // ausschalten
+        digitalWrite(schalterH1Pin, HIGH);   // ausschalten
+        digitalWrite(schalterH2Pin, HIGH);   // ausschalten
     }
 
     //Ende Heizregelung---------------------------------------------------
@@ -497,8 +491,6 @@ void loop()
     //Ende Kochen -----------------------------------------------------------
 
     // Drehgeber und Tastenabfrage -------------------------------------------------
-    //isr_2();   //drehgeber abfragen FIXME?
-    //isr_3();   //drehgeber abfragen FIXME?
     getButton();  //Taster abfragen
     //---------------------------------------------------------------
 
@@ -671,11 +663,11 @@ void isr_2()
 {
     // Pin2 went LOW
     delay(1);                                                // Debounce time
-    if (digitalRead(2) == LOW) {                             // Pin2 still LOW ?
-        if (digitalRead(3) == HIGH && halfright == false) {    // -->
+    if (digitalRead(encoderPinA) == LOW) {                             // Pin2 still LOW ?
+        if (digitalRead(encoderPinB) == HIGH && halfright == false) {    // -->
             halfright = true;                                    // One half click clockwise
         }
-        if (digitalRead(3) == LOW && halfleft == true) {       // <--
+        if (digitalRead(encoderPinB) == LOW && halfleft == true) {       // <--
             halfleft = false;                                    // One whole click counter-
             {
                 number++;
@@ -688,11 +680,11 @@ void isr_3()
 {
     // Pin3 went LOW
     delay(1);                                               // Debounce time
-    if (digitalRead(3) == LOW) {                            // Pin3 still LOW ?
-        if (digitalRead(2) == HIGH && halfleft == false) {    // <--
+    if (digitalRead(encoderPinB) == LOW) {                            // Pin3 still LOW ?
+        if (digitalRead(encoderPinA) == HIGH && halfleft == false) {    // <--
             halfleft = true;                                    // One half  click counter-
         }                                                     // clockwise
-        if (digitalRead(2) == LOW && halfright == true) {     // -->
+        if (digitalRead(encoderPinA) == LOW && halfright == true) {     // -->
             halfright = false;                                  // One whole click clockwise
             {
                 number--;
@@ -707,7 +699,7 @@ void isr_3()
 int getButton()
 {
     //delay(100);
-    ButtonVoltage = digitalRead(taster);
+    int ButtonVoltage = digitalRead(tasterPin);
     if (ButtonVoltage  == HIGH) {
         ButtonPressed = 0;
         abbruchtaste = millis();
@@ -1301,7 +1293,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
         print_lcd("          ", LEFT, 3);
-        digitalWrite(schalterB, LOW);
+        digitalWrite(schalterBPin, LOW);
         if (millis() >= (altsekunden + 1500)) {
             altsekunden = millis();
             pause++;
@@ -1309,7 +1301,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
     } else {
         print_lcd("RUF", LEFT, 3);
         if (pause <= 4) {
-            digitalWrite(schalterB, HIGH);
+            digitalWrite(schalterBPin, HIGH);
         }
         if (pause > 8) {
             pause = 0;
@@ -1318,17 +1310,17 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
 
     if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-        digitalWrite(schalterF, HIGH);    //Funkalarm ausschalten
+        digitalWrite(schalterFPin, HIGH);    //Funkalarm ausschalten
     } else {
-        digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
     }
 
     //20 Sekunden Rufsignalisierung wenn "Ruf Signal"
     if (braumeister[y] == BM_ALARM_SIGNAL && millis() >= (rufsignalzeit + 20000)) {
         anfang = 0;
         pause = 0;
-        digitalWrite(schalterB, LOW);   // Alarm ausschalten
-        digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         modus = rufmodus;
         einmaldruck = false;
     }
@@ -1343,8 +1335,8 @@ void funktion_braumeisterrufalarm()      //Modus=31
             einmaldruck = false;
             pause = 0;
             anfang = 0;
-            digitalWrite(schalterB, LOW);   // Alarm ausschalten
-            digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
             if (braumeister[y] == BM_ALARM_SIGNAL) {
                 print_lcd("   ", LEFT, 3);
                 modus = rufmodus;
@@ -1506,8 +1498,8 @@ void funktion_starthopfengaben()      //Modus=43
 
 
     if (isttemp >= 98) {
-        digitalWrite(schalterB, HIGH);
-        digitalWrite(schalterF, HIGH);
+        digitalWrite(schalterBPin, HIGH);
+        digitalWrite(schalterFPin, HIGH);
         print_lcd("Kochbeginn", CENTER, 1);
     } else {
         print_lcd("Zeitablauf", CENTER, 1);
@@ -1520,8 +1512,8 @@ void funktion_starthopfengaben()      //Modus=43
 
     if (einmaldruck == true) {
         if (ButtonPressed == 1) {
-            digitalWrite(schalterB, LOW);   //Ruf ausschalten
-            digitalWrite(schalterF, LOW);   //Funkruf ausschalten
+            digitalWrite(schalterBPin, LOW);   //Ruf ausschalten
+            digitalWrite(schalterFPin, LOW);   //Funkruf ausschalten
             einmaldruck = false;
             anfang = 0;
             modus = KOCHEN_AUTO_LAUF;
@@ -1593,7 +1585,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
         //Alarm -----
         if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
             print_lcd("        ", RIGHT, 3);
-            digitalWrite(schalterB, LOW);
+            digitalWrite(schalterBPin, LOW);
             if (millis() >= (altsekunden + 1500)) {
                 altsekunden = millis();
                 pause++;
@@ -1601,7 +1593,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
         } else {
             print_lcd("RUF", LEFT, 3);
             if (pause <= 4) {
-                digitalWrite(schalterB, HIGH);
+                digitalWrite(schalterBPin, HIGH);
             }
             if (pause > 8) {
                 pause = 0;
@@ -1610,9 +1602,9 @@ void funktion_hopfenzeitautomatik()      //Modus=44
 
 
         if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-            digitalWrite(schalterF, HIGH);    //Funkalarm einschalten
+            digitalWrite(schalterFPin, HIGH);    //Funkalarm einschalten
         } else {
-            digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         }
         //-----------
 
@@ -1625,8 +1617,8 @@ void funktion_hopfenzeitautomatik()      //Modus=44
             if (ButtonPressed == 1) {
                 einmaldruck = false;
                 pause = 0;
-                digitalWrite(schalterB, LOW);   // Alarm ausschalten
-                digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+                digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+                digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
                 x++;
             }
         }
@@ -1634,8 +1626,8 @@ void funktion_hopfenzeitautomatik()      //Modus=44
 
     if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Alarmende nach 1 Minute
         pause = 0;
-        digitalWrite(schalterB, LOW);   // Alarm ausschalten
-        digitalWrite(schalterF, LOW);   // Funkalarm ausschalten
+        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         x++;
     }
 
@@ -1731,10 +1723,10 @@ void funktion_abbruch()       // Modus 80
     regelung = REGL_AUS;
     heizung = 0;
     wartezeit = -60000;
-    digitalWrite(schalterH1, HIGH);
-    digitalWrite(schalterH2, HIGH);
-    digitalWrite(schalterB, LOW);   // ausschalten
-    digitalWrite(schalterF, LOW);   // ausschalten
+    digitalWrite(schalterH1Pin, HIGH);
+    digitalWrite(schalterH2Pin, HIGH);
+    digitalWrite(schalterBPin, LOW);   // ausschalten
+    digitalWrite(schalterFPin, LOW);   // ausschalten
     anfang = 0;                     //Daten zurücksetzen
     lcd.clear();                //Rastwerteeingaben
     rufmodus = HAUPTSCHIRM;                   //bleiben erhalten
