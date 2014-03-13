@@ -74,6 +74,7 @@
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x3f, 20, 4);
 
+
 byte degC[8] = {
     B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
 };
@@ -265,6 +266,7 @@ void setup()
     lcd.createChar(8, degC);         // Celsius
     lcd.backlight();
     lcd.clear();
+    lcd.noCursor();
 
     print_lcd("BK V2.2 - LC2004", LEFT, 0);
     print_lcd("Arduino", LEFT, 1);
@@ -506,7 +508,7 @@ void loop()
 
         case MANUELL:  //Nur Temperaturregelung
             regelung = REGL_MAISCHEN;
-            zeigeH = false;
+            zeigeH = true;
             funktion_temperatur();
             break;
 
@@ -518,12 +520,13 @@ void loop()
 
         case NACHGUSS:  //Nachgusswasserbereitung
             regelung = REGL_MAISCHEN;
-            zeigeH = false;
+            zeigeH = true;
             funktion_temperatur();
             break;
 
         case KUEHLEN:  //Kühlen
             regelung = REGL_KUEHLEN;
+            zeigeH = true;
             funktion_temperatur();
             break;
 
@@ -1539,13 +1542,12 @@ void funktion_hopfenzeitautomatik()      //Modus=44
         delay(400); //test
         print_lcd("         ", LEFT, 0);
 
-        print_lcd_minutes(hopfenZeit[x], LEFT, 0);
-
         sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
         minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
         stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
 
         anfang = 1;
+        print_lcd("00:00", 11, 1);
     }
 
 
@@ -1557,8 +1559,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
         print_lcd("                    ", 0, 2);
     }
 
-
-    print_lcd("00:00", 11, 1);
+    
     print_lcd("min", RIGHT, 1);
 
     if (sekunden < 10) {
@@ -1584,7 +1585,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
     if ((minuten == hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Hopfengabe
         //Alarm -----
         if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
-            print_lcd("        ", RIGHT, 3);
+            print_lcd("   ", LEFT, 3);
             digitalWrite(schalterBPin, LOW);
             if (millis() >= (altsekunden + 1500)) {
                 altsekunden = millis();
@@ -1617,6 +1618,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
             if (ButtonPressed == 1) {
                 einmaldruck = false;
                 pause = 0;
+                print_lcd("   ", LEFT, 3);
                 digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
                 digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
                 x++;
