@@ -866,15 +866,15 @@ void funktion_temperatur()      //Modus=1 bzw.2
 
     switch (modus) {
         case MANUELL:
-            print_lcd("Manuell", RIGHT, 0);
+            print_lcd("Manuell", LEFT, 0);
             break;
 
         case NACHGUSS:
-            print_lcd("Nachguss", RIGHT, 0);
+            print_lcd("Nachguss", LEFT, 0);
             break;
 
         case KUEHLEN:
-            print_lcd("Kuehlen", RIGHT, 0);
+            print_lcd("Kuehlen", LEFT, 0);
             break;
 
     }
@@ -1406,7 +1406,8 @@ void funktion_kochzeit()      //Modus=40
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
+        print_lcd("Kochen", LEFT, 0);
+        print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Zeit", LEFT, 1);
 
         fuenfmindrehen = kochzeit;
@@ -1427,7 +1428,8 @@ void funktion_anzahlhopfengaben()      //Modus=41
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
+        print_lcd("Kochen", LEFT, 0);
+        print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Hopfengaben", LEFT, 1);
 
         drehen = hopfenanzahl;
@@ -1452,7 +1454,8 @@ void funktion_hopfengaben()      //Modus=42
         fuenfmindrehen = hopfenZeit[x];
         anfang = 1;
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
+        print_lcd("Kochen", LEFT, 0);
+        print_lcd("Eingabe", RIGHT, 0);
     }
 
     printNumI_lcd(x, LEFT, 1);
@@ -1493,7 +1496,7 @@ void funktion_startkochenabfrage()      //Modus=43
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
+        print_lcd("Kochen", LEFT, 0);
         anfang = 1;
         altsekunden = millis();
     }
@@ -1516,12 +1519,12 @@ void funktion_kochenaufheizen()      //Modus=44
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
+        print_lcd("Kochen", LEFT, 0);
         anfang = 1;
     }
 
     if (isttemp >= 98) {
-        print_lcd("            ", LEFT, 1);
+        print_lcd("            ", RIGHT, 0);
         print_lcd("Kochbeginn", CENTER, 1);
         digitalWrite(schalterBPin, HIGH);
         delay(500);
@@ -1529,7 +1532,7 @@ void funktion_kochenaufheizen()      //Modus=44
         anfang = 0;
         modus = KOCHEN_AUTO_LAUF;
     } else {
-        print_lcd("Aufheizen...", LEFT, 1);
+        print_lcd("Aufheizen", RIGHT, 0);
     }
 }
 //------------------------------------------------------------------
@@ -1542,15 +1545,11 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         x = 1;
         anfang = 1;
         lcd.clear();
-        print_lcd("Kochen", RIGHT, 0);
-
-        print_lcd("Set Time", LEFT, 0);
+        print_lcd("Kochen", LEFT, 0);
 
         setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
 
-        delay(400); //test
-        print_lcd("         ", LEFT, 0);
-        print_lcd_minutes(kochzeit, LEFT, 0);
+        print_lcd_minutes(kochzeit, RIGHT, 0);
 
         sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
         minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
@@ -1662,7 +1661,8 @@ void funktion_timer()      //Modus=60
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Timer", RIGHT, 0);
+        print_lcd("Timer", LEFT, 0);
+        print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Zeit", LEFT, 2);
 
         drehen = timer;
@@ -1687,13 +1687,13 @@ void funktion_timerlauf()      //Modus=61
 
         anfang = 1;
         lcd.clear();
-        print_lcd("Timer", RIGHT, 0);
-        print_lcd("Set Time", LEFT, 0);
+        print_lcd("Timer", LEFT, 0);
+        print_lcd("Set Time", RIGHT, 0);
 
         setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
 
         delay(400); //test
-        print_lcd("         ", LEFT, 0);
+        print_lcd("         ", RIGHT, 0);
 
         sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
         minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
