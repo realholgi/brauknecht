@@ -136,7 +136,7 @@ enum MODUS {HAUPTSCHIRM = 0,
             EINGABE_RAST_ANZ = 19, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP = 20, EINGABE_RAST_TEMP = 21, EINGABE_RAST_ZEIT = 22, EINGABE_BRAUMEISTERRUF = 24, EINGABE_ENDTEMP = 25,
             AUTO_START = 26, AUTO_MAISCHTEMP = 27, AUTO_RAST_TEMP = 28, AUTO_RAST_ZEIT = 29, AUTO_ENDTEMP = 30,
             BRAUMEISTERRUFALARM = 31, BRAUMEISTERRUF = 32,
-            KOCHEN = 40, EINGABE_HOPFENGABEN_ANZAHL = 41, EINGABE_HOPFENGABEN_ZEIT = 42, KOCHEN_START_FRAGE = 43, KOCHEN_AUTO_LAUF = 44,
+            KOCHEN = 40, EINGABE_HOPFENGABEN_ANZAHL = 41, EINGABE_HOPFENGABEN_ZEIT = 42, KOCHEN_START_FRAGE = 43, KOCHEN_AUFHEIZEN = 44, KOCHEN_AUTO_LAUF = 45,
             TIMER = 60, TIMERLAUF = 61,
             ABBRUCH = 80
            };
@@ -601,35 +601,44 @@ void loop()
             break;
 
         case BRAUMEISTERRUFALARM:  //Braumeisterrufalarm
+            zeigeH = false;
             funktion_braumeisterrufalarm();
             break;
 
         case BRAUMEISTERRUF:  //Braumeisterruf
+            zeigeH = false;
             funktion_braumeisterruf();
             break;
 
         case KOCHEN:  //Kochen Kochzeit
-            regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
+            zeigeH = false;
             funktion_kochzeit();
             break;
 
         case EINGABE_HOPFENGABEN_ANZAHL:  //Kochen Anzahl der Hopfengaben
-            regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
+            zeigeH = false;
             funktion_anzahlhopfengaben();
             break;
 
         case EINGABE_HOPFENGABEN_ZEIT:  //Kochen Eingabe der Zeitwerte
-            regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
+            zeigeH = false;
             funktion_hopfengaben();
             break;
 
         case KOCHEN_START_FRAGE:  //Startabfrage
+            zeigeH = false;
+            funktion_startkochenabfrage();
+            break;
+
+        case KOCHEN_AUFHEIZEN:  //Aufheizen
             regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
-            funktion_starthopfengaben();
+            zeigeH = false;
+            funktion_kochenaufheizen();
             break;
 
         case KOCHEN_AUTO_LAUF:  //Kochen Automatik Zeit
             regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
+            zeigeH = true;
             funktion_hopfenzeitautomatik();
             break;
 
@@ -646,6 +655,7 @@ void loop()
             break;
 
         case ABBRUCH:  //Abbruch
+            zeigeH = true;
             funktion_abbruch();
             break;
     }
@@ -1288,7 +1298,6 @@ void funktion_endtempautomatik()      //Modus=30
 // Funktion braumeisterrufalarm---------------------------------------
 void funktion_braumeisterrufalarm()      //Modus=31
 {
-    zeigeH = false;
     if (anfang == 0) {
         rufsignalzeit = millis();
         anfang = 1;
@@ -1355,7 +1364,6 @@ void funktion_braumeisterrufalarm()      //Modus=31
 // Funktion braumeisterruf------------------------------------------
 void funktion_braumeisterruf()      //Modus=32
 {
-    zeigeH = false;
     if (anfang == 0) {
         anfang = 1;
     }
@@ -1465,6 +1473,7 @@ void funktion_hopfengaben()      //Modus=42
             einmaldruck = false;
             if (x < hopfenanzahl) {
                 x++;
+                fuenfmindrehen = hopfenZeit[x];
                 print_lcd("  ", LEFT, 1);
                 print_lcd("   ", 13, 2);
                 delay(400);
@@ -1479,55 +1488,55 @@ void funktion_hopfengaben()      //Modus=42
 //------------------------------------------------------------------
 
 
-// Funktion Hopfengabenstart-------------------------------------------
-void funktion_starthopfengaben()      //Modus=43
+// Funktion Startkochenabfrage-------------------------------------------
+void funktion_startkochenabfrage()      //Modus=43
 {
     if (anfang == 0) {
         lcd.clear();
         print_lcd("Kochen", RIGHT, 0);
         anfang = 1;
-        delay(1000);    //kurze Wartezeit, damit die Startbestätigung
-        //nicht einfach "überdrückt" wird
         altsekunden = millis();
     }
 
     if (millis() >= (altsekunden + 1000)) {
         print_lcd("       ", CENTER, 2);
-        if (millis() >= (altsekunden + 1500))
-        { altsekunden = millis(); }
+        if (millis() >= (altsekunden + 1500)) {
+            altsekunden = millis();
+        }
     } else {
         print_lcd("Start ?", CENTER, 2);
     }
 
+    warte_und_weiter(KOCHEN_AUFHEIZEN);
+}
+//------------------------------------------------------------------
+
+// Funktion Kochenaufheizen-------------------------------------------
+void funktion_kochenaufheizen()      //Modus=44
+{
+    if (anfang == 0) {
+        lcd.clear();
+        print_lcd("Kochen", RIGHT, 0);
+        anfang = 1;
+    }
 
     if (isttemp >= 98) {
-        digitalWrite(schalterBPin, HIGH);
-        digitalWrite(schalterFPin, HIGH);
+        print_lcd("            ", LEFT, 1);
         print_lcd("Kochbeginn", CENTER, 1);
+        digitalWrite(schalterBPin, HIGH);
+        delay(500);
+        digitalWrite(schalterBPin, LOW);   //Ruf ausschalten
+        anfang = 0;
+        modus = KOCHEN_AUTO_LAUF;
     } else {
-        print_lcd("Zeitablauf", CENTER, 1);
-    }
-
-
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            digitalWrite(schalterBPin, LOW);   //Ruf ausschalten
-            digitalWrite(schalterFPin, LOW);   //Funkruf ausschalten
-            einmaldruck = false;
-            anfang = 0;
-            modus = KOCHEN_AUTO_LAUF;
-        }
+        print_lcd("Aufheizen...", LEFT, 1);
     }
 }
 //------------------------------------------------------------------
 
 
 // Funktion Hopfengaben Benachrichtigung------------------------------------------
-void funktion_hopfenzeitautomatik()      //Modus=44
+void funktion_hopfenzeitautomatik()      //Modus=45
 {
     if (anfang == 0) {
         x = 1;
@@ -1541,6 +1550,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
 
         delay(400); //test
         print_lcd("         ", LEFT, 0);
+        print_lcd_minutes(kochzeit, LEFT, 0);
 
         sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
         minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
@@ -1559,7 +1569,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
         print_lcd("                    ", 0, 2);
     }
 
-    
+
     print_lcd("min", RIGHT, 1);
 
     if (sekunden < 10) {
@@ -1584,6 +1594,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
 
     if ((minuten == hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Hopfengabe
         //Alarm -----
+        zeigeH = false;
         if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
             print_lcd("   ", LEFT, 3);
             digitalWrite(schalterBPin, LOW);
@@ -1618,6 +1629,7 @@ void funktion_hopfenzeitautomatik()      //Modus=44
             if (ButtonPressed == 1) {
                 einmaldruck = false;
                 pause = 0;
+                zeigeH = true;
                 print_lcd("   ", LEFT, 3);
                 digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
                 digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
