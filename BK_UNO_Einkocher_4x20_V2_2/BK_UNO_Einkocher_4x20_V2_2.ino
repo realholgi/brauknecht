@@ -131,19 +131,18 @@ int val = 0;           // Variable um Messergebnis zu speichern
 //-----------------------------------------------------------------
 
 enum MODUS {HAUPTSCHIRM = 0,
-            MANUELL = 1, NACHGUSS = 2, MAISCHEN = 11, KUEHLEN = 5,
-            ALARMTEST = 10,
-            EINGABE_RAST_ANZ = 19, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP = 20, EINGABE_RAST_TEMP = 21, EINGABE_RAST_ZEIT = 22, EINGABE_BRAUMEISTERRUF = 24, EINGABE_ENDTEMP = 25,
-            AUTO_START = 26, AUTO_MAISCHTEMP = 27, AUTO_RAST_TEMP = 28, AUTO_RAST_ZEIT = 29, AUTO_ENDTEMP = 30,
-            BRAUMEISTERRUFALARM = 31, BRAUMEISTERRUF = 32,
-            KOCHEN = 40, EINGABE_HOPFENGABEN_ANZAHL = 41, EINGABE_HOPFENGABEN_ZEIT = 42, KOCHEN_START_FRAGE = 43, KOCHEN_AUFHEIZEN = 44, KOCHEN_AUTO_LAUF = 45,
-            TIMER = 60, TIMERLAUF = 61,
-            ABBRUCH = 80
+            MANUELL, NACHGUSS, MAISCHEN, KUEHLEN,
+            EINGABE_RAST_ANZ, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP, EINGABE_RAST_TEMP, EINGABE_RAST_ZEIT, EINGABE_BRAUMEISTERRUF, EINGABE_ENDTEMP,
+            AUTO_START, AUTO_MAISCHTEMP, AUTO_RAST_TEMP, AUTO_RAST_ZEIT, AUTO_ENDTEMP,
+            BRAUMEISTERRUFALARM, BRAUMEISTERRUF,
+            KOCHEN, EINGABE_HOPFENGABEN_ANZAHL, EINGABE_HOPFENGABEN_ZEIT, KOCHEN_START_FRAGE, KOCHEN_AUFHEIZEN, KOCHEN_AUTO_LAUF,
+            TIMER, TIMERLAUF,
+            ABBRUCH, ALARMTEST
            };
 
-enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN = 1, REGL_KUEHLEN = 2, REGL_KOCHEN = 3};
+enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KUEHLEN, REGL_KOCHEN};
 
-enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_WAIT = 1, BM_ALARM_SIGNAL = 2};
+enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
 
 //Allgemein Initialisierung------------------------------------------
 int anfang = 0;
@@ -632,7 +631,7 @@ void loop()
 
         case KOCHEN_AUFHEIZEN:  //Aufheizen
             regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
-            zeigeH = false;
+            zeigeH = true;
             funktion_kochenaufheizen();
             break;
 
@@ -727,6 +726,24 @@ int getButton()
 }
 //--------------------------------------------------------------------
 
+// Funktion warte_und_weiter---------------------------------
+boolean warte_und_weiter(MODUS naechsterModus)
+{
+    if (ButtonPressed == 0) {
+        einmaldruck = true;
+    }
+    if (einmaldruck == true) {
+        if (ButtonPressed == 1) {
+            einmaldruck = false;
+            modus = naechsterModus;
+            anfang = 0;
+            return true;
+        }
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
 
 // Funktion Hauptschirm---------------------------------
 void funktion_hauptschirm()      //Modus=0
@@ -775,24 +792,13 @@ void funktion_hauptschirm()      //Modus=0
         print_lcd("=>", LEFT, 3);
     }
 
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;
-            modus = rufmodus;
-            if (modus == KUEHLEN) {
-                //Übergabe an Modus1
-                isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
-                drehen = isttemp_ganzzahl;  //ganzzahliger Vorgabewert
-            }                               //für Sollwert
-
-            anfang = 0;
-            lcd.clear();
-        }
-
+    if (warte_und_weiter(rufmodus)) {
+        if (modus == KUEHLEN) {
+            //Übergabe an Modus1
+            isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
+            drehen = isttemp_ganzzahl;  //ganzzahliger Vorgabewert
+        }                               //für Sollwert
+        lcd.clear();
     }
 }
 //-----------------------------------------------------------------
@@ -833,27 +839,17 @@ void funktion_maischmenue()      //Modus=01
         print_lcd("=>", LEFT, 2);
     }
 
-
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;
-            modus = rufmodus;
-            if (modus == MANUELL) {
-                //Übergabe an Modus1
-                isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
-                drehen = (isttemp_ganzzahl + 10); //ganzzahliger Vorgabewert 10°C über Ist
-            }                               //für Sollwert
-            if (modus == NACHGUSS) {
-                //Übergabe an Modus2
-                drehen = endtemp;                    //Nachgusstemperatur
-            }                               //für Sollwert
-            anfang = 0;
-            lcd.clear();
-        }
+    if (warte_und_weiter(rufmodus)) {
+        if (modus == MANUELL) {
+            //Übergabe an Modus1
+            isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
+            drehen = (isttemp_ganzzahl + 10); //ganzzahliger Vorgabewert 10°C über Ist
+        }                               //für Sollwert
+        if (modus == NACHGUSS) {
+            //Übergabe an Modus2
+            drehen = endtemp;                    //Nachgusstemperatur
+        }                               //für Sollwert
+        //lcd.clear();
     }
 }
 //-----------------------------------------------------------------
@@ -862,8 +858,13 @@ void funktion_maischmenue()      //Modus=01
 // Funktion nur Temperaturregelung---------------------------------
 void funktion_temperatur()      //Modus=1 bzw.2
 {
-    sollwert = drehen;
+    if (anfang == 0) {
+        lcd.clear();
+        print_lcd("soll", 9, 1);
+        anfang == 1;
+    }
 
+    sollwert = drehen;
     switch (modus) {
         case MANUELL:
             print_lcd("Manuell", LEFT, 0);
@@ -894,24 +895,6 @@ void funktion_temperatur()      //Modus=1 bzw.2
         modus = BRAUMEISTERRUFALARM;
         y = 0;
         braumeister[y] = BM_ALARM_SIGNAL;        //nur Ruf und weiter mit Regelung
-    }
-
-    print_lcd("soll", 9, 1);
-
-}
-//-----------------------------------------------------------------
-
-void warte_und_weiter(MODUS naechsterModus)
-{
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;
-            modus = naechsterModus;
-            anfang = 0;
-        }
     }
 }
 
@@ -1068,36 +1051,32 @@ void funktion_braumeister() //Modus=24
 
     //delay(200);
 
-    drehen = constrain( drehen, 0, 2);
+    drehen = constrain( drehen, BM_ALARM_MIN, BM_ALARM_MAX);
     braumeister[x] = (BM_ALARM_MODE)drehen;
 
     print_lcd("Ruf", LEFT, 2);
 
-    if (braumeister[x] == BM_ALARM_AUS) {
-        print_lcd("    Nein", RIGHT, 2);
-    }
-    if (braumeister[x] == BM_ALARM_WAIT) {
-        print_lcd("Anhalten", RIGHT, 2);
-    }
-    if (braumeister[x] == BM_ALARM_SIGNAL) {
-        print_lcd("  Signal", RIGHT, 2);
+    switch (braumeister[x]) {
+        case BM_ALARM_AUS:
+            print_lcd("    Nein", RIGHT, 2);
+            break;
+
+        case BM_ALARM_WAIT:
+            print_lcd("Anhalten", RIGHT, 2);
+            break;
+
+        case BM_ALARM_SIGNAL:
+            print_lcd("  Signal", RIGHT, 2);
+            break;
     }
 
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;   //Überprüfung loslassen der Taste Null
-            if (x < rasten) {
-                x++;
-                modus = EINGABE_RAST_TEMP;           //Sprung zur Rasttemperatureingabe
-                anfang = 0;
-            } else {
-                x = 1;
-                modus = EINGABE_ENDTEMP;           //Sprung zur Rastzeiteingabe
-                anfang = 0;
-            }
+    if (warte_und_weiter(EINGABE_ENDTEMP)) {
+        if (x < rasten) {
+            x++;
+            modus = EINGABE_RAST_TEMP;           //Sprung zur Rasttemperatureingabe
+        } else {
+            x = 1;
+            modus = EINGABE_ENDTEMP;           //Sprung zur Rastzeiteingabe
         }
     }
 }
@@ -1230,6 +1209,9 @@ void funktion_zeitautomatik()      //Modus=29
 
     if (sekunden < 10) {
         printNumI_lcd(sekunden, 4, 2);
+        if (sekunden == 0) {
+            print_lcd("0", 3, 2);
+        }
     } else {
         printNumI_lcd(sekunden, 3, 2);
     }
@@ -1338,23 +1320,13 @@ void funktion_braumeisterrufalarm()      //Modus=31
     }
     //weiter mit Programmablauf
 
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;
-            pause = 0;
-            anfang = 0;
-            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
-            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
-            if (braumeister[y] == BM_ALARM_SIGNAL) {
-                print_lcd("   ", LEFT, 3);
-                modus = rufmodus;
-            } else {
-                modus = BRAUMEISTERRUF;
-            }
+    if (warte_und_weiter(BRAUMEISTERRUF)) {
+        pause = 0;
+        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+        if (braumeister[y] == BM_ALARM_SIGNAL) {
+            print_lcd("   ", LEFT, 3);
+            modus = rufmodus;
         }
     }
 }
@@ -1378,25 +1350,15 @@ void funktion_braumeisterruf()      //Modus=32
         print_lcd("weiter ?", LEFT, 3);
     }
 
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
+    if (warte_und_weiter(rufmodus)) {
+        print_lcd("        ", LEFT, 3);     //Text "weiter ?" löschen
+        print_lcd("             ", RIGHT, 3); //Löscht Text bei
+        sensorfehler = 0;                         //Sensorfehler oder Alarmtest
+        delay(500);     //kurze Wartezeit, damit nicht
+        //durch unbeabsichtigtes Drehen
+        //der nächste Vorgabewert
+        //verstellt wird
     }
-    if (einmaldruck == true)
-        if (ButtonPressed == 1) {
-            {
-                einmaldruck = false;
-                print_lcd("        ", LEFT, 3);     //Text "weiter ?" löschen
-                print_lcd("             ", RIGHT, 3); //Löscht Text bei
-                sensorfehler = 0;                         //Sensorfehler oder Alarmtest
-
-                anfang = 0;
-                modus = rufmodus;
-                delay(500);     //kurze Wartezeit, damit nicht
-                //durch unbeabsichtigtes Drehen
-                //der nächste Vorgabewert
-                //verstellt wird
-            }
-        }
 }
 //------------------------------------------------------------------
 
@@ -1467,24 +1429,17 @@ void funktion_hopfengaben()      //Modus=42
 
     print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
 
-    if (ButtonPressed == 0) {
-        einmaldruck = true;
-    }
-
-    if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
-            einmaldruck = false;
-            if (x < hopfenanzahl) {
-                x++;
-                fuenfmindrehen = hopfenZeit[x];
-                print_lcd("  ", LEFT, 1);
-                print_lcd("   ", 13, 2);
-                delay(400);
-            } else {
-                x = 1;
-                modus = KOCHEN_START_FRAGE;
-                anfang = 0;
-            }
+    if (warte_und_weiter(modus)) {
+        if (x < hopfenanzahl) {
+            x++;
+            fuenfmindrehen = hopfenZeit[x];
+            print_lcd("  ", LEFT, 1);
+            print_lcd("   ", 13, 2);
+            delay(400);
+            anfang = 1; // nicht auf Anfang zurück
+        } else {
+            x = 1;
+            modus = KOCHEN_START_FRAGE;
         }
     }
 }
@@ -1568,11 +1523,13 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         print_lcd("                    ", 0, 2);
     }
 
-
     print_lcd("min", RIGHT, 1);
 
     if (sekunden < 10) {
         printNumI_lcd(sekunden, 15, 1);
+        if (sekunden) {
+            print_lcd("0", 14, 1);
+        }
     } else {
         printNumI_lcd(sekunden, 14, 1);
     }
@@ -1589,7 +1546,6 @@ void funktion_hopfenzeitautomatik()      //Modus=45
     if (minuten >= 100) {
         printNumI_lcd(minuten, 10, 1);
     }
-
 
     if ((minuten == hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Hopfengabe
         //Alarm -----
@@ -1620,20 +1576,14 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         //-----------
 
 
-        if (ButtonPressed == 0) {
-            einmaldruck = true;
-        }
-
-        if (einmaldruck == true) {
-            if (ButtonPressed == 1) {
-                einmaldruck = false;
-                pause = 0;
-                zeigeH = true;
-                print_lcd("   ", LEFT, 3);
-                digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
-                digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
-                x++;
-            }
+        if (warte_und_weiter(modus)) {
+            pause = 0;
+            zeigeH = true;
+            print_lcd("   ", LEFT, 3);
+            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+            x++;
+            anfang = 1; // nicht zurücksetzen!!!
         }
     }
 
@@ -1709,6 +1659,9 @@ void funktion_timerlauf()      //Modus=61
 
     if (sekunden < 10) {
         printNumI_lcd(sekunden, 4, 2);
+        if (sekunden == 0) {
+            print_lcd("0", 3, 2);
+        }
     } else {
         printNumI_lcd(sekunden, 3, 2);
     }
