@@ -1,3 +1,4 @@
+#pragma GCC diagnostic ignored "-Wwrite-strings"
 
 //start=============================================================
 
@@ -216,7 +217,7 @@ void print_lcd (char *st, int x, int y)
     lcd.print(st);
 }
 
-void printNumI_lcd(long num, int x, int y, int length = 0, char filler = ' ')
+void printNumI_lcd(int num, int x, int y, int length = 0, char filler = ' ')
 {
     char st[10];
     sprintf(st, "%i", num);
@@ -441,6 +442,8 @@ void loop()
                     break;
                 case REGL_KOCHEN: //Kochen
                     print_lcd("H", LEFT, 3);
+                    break;
+                default:
                     break;
             }
         }
@@ -727,6 +730,8 @@ int getButton()
 //--------------------------------------------------------------------
 
 // Funktion warte_und_weiter---------------------------------
+
+boolean warte_und_weiter(MODUS naechsterModus);
 boolean warte_und_weiter(MODUS naechsterModus)
 {
     if (ButtonPressed == 0) {
@@ -865,6 +870,7 @@ void funktion_temperatur()      //Modus=1 bzw.2
     }
 
     sollwert = drehen;
+    
     switch (modus) {
         case MANUELL:
             print_lcd("Manuell", LEFT, 0);
@@ -878,6 +884,8 @@ void funktion_temperatur()      //Modus=1 bzw.2
             print_lcd("Kuehlen", LEFT, 0);
             break;
 
+        default:
+            break;
     }
 
     if ((modus == MANUELL) && (isttemp >= sollwert)) { //Manuell -> Sollwert erreicht
