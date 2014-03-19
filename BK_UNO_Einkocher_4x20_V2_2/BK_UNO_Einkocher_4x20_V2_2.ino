@@ -155,6 +155,7 @@ int heizung = 0;
 int sensorfehler = 0;
 float hysterese = 0;
 float wartezeit = -60000;
+float serwartezeit = 0;
 float sensorwert;
 float isttemp = 20;                                   //Vorgabe 20 damit Sensorfehler am Anfang nicht anspricht
 int isttemp_ganzzahl;                                 //für Übergabe der isttemp als Ganzzahl
@@ -238,8 +239,8 @@ void printNumF_lcd (double num, int x, int y, byte dec = 1, int length = 0)
 void setup()
 {
 
-    //Serial.begin(9600);           //.........Test Serial
-    //Serial.println("Test");         //.........Test Serial
+    Serial.begin(9600);           //.........Test Serial
+    Serial.println("Test");         //.........Test Serial
 
     drehen = sollwert;
 
@@ -316,7 +317,7 @@ void loop()
     // call sensors.requestTemperatures() to issue a global temperature
     sensors.requestTemperatures(); // Send the command to get temperatures
     sensorwert = sensors.getTempC(insideThermometer);
-    if ((sensorwert != isttemp) && (n < 10)) { // Messfehlervermeidung
+    if ((sensorwert != isttemp) && (n < 5)) { // Messfehlervermeidung
         // des Sensorwertes
         n++;                                   // nach mehreren
     }                                      // Messungen
@@ -390,7 +391,7 @@ void loop()
         //-------------------------------------------------------------------
     }
 
-    unsigned long now = millis();
+    //unsigned long now = millis();
 
     if (regelung == REGL_MAISCHEN) {
         /*
@@ -410,26 +411,26 @@ void loop()
         }
 
         //Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
-        if ((heizung == 1) && (isttemp >= (sollwert - hysterese)) && (now >= (wartezeit + 60000))) {
+        if ((heizung == 1) && (isttemp >= (sollwert - hysterese)) && (millis() >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 0;             // Heizung ausschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = millis();    //Start Wartezeitzählung
         }
 
         //Einschalten wenn kleiner Sollwert und dann Wartezeit
-        if ((heizung == 0) && (isttemp <= (sollwert - 0.5)) && (now >= (wartezeit + 60000))) {
+        if ((heizung == 0) && (isttemp <= (sollwert - 0.5)) && (millis() >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 1;             // Heizung einschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = millis();    //Start Wartezeitzählung
         }
 
         //Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
         if ((heizung == 1) && (isttemp >= (sollwert + 0.5))) {
             heizung = 0;             // Heizung ausschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = 0;           //Start Wartezeitzählung
         }
     }
 
@@ -438,22 +439,22 @@ void loop()
 
     //Kühlregelung -----------------------------------------------------
     if (regelung == REGL_KUEHLEN) {
-        if ((heizung == 0) && (isttemp >= (sollwert + 1)) && (now >= (wartezeit + 60000))) {
+        if ((heizung == 0) && (isttemp >= (sollwert + 1)) && (millis() >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 1;             // einschalten
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = millis();    //Start Wartezeitzählung
         }
 
-        if ((heizung == 1) && (isttemp <= sollwert - 1) && (now >= (wartezeit + 60000))) {
+        if ((heizung == 1) && (isttemp <= sollwert - 1) && (millis() >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 0;             // ausschalten
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = millis();    //Start Wartezeitzählung
         }
 
         //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
         if ((heizung == 1) && (isttemp < (sollwert - 2))) {
             heizung = 0;             // ausschalten
-            wartezeit = now;    //Start Wartezeitzählung
+            wartezeit = millis();    //Start Wartezeitzählung
         }
     }
     //Ende Kühlregelung ---------------------------------------------
@@ -491,6 +492,14 @@ void loop()
         }
         digitalWrite(schalterH1Pin, HIGH);   // ausschalten
         digitalWrite(schalterH2Pin, HIGH);   // ausschalten
+    }
+
+    if (millis() >= (serwartezeit + 1000)) {
+        Serial.print(millis());
+        Serial.print("\t");
+        Serial.print(isttemp);
+        Serial.println("");
+        serwartezeit = millis();
     }
 
     // Drehgeber und Tastenabfrage -------------------------------------------------
@@ -1034,12 +1043,12 @@ void funktion_zeiteingabe()      //Modus=22
 {
 
     if (anfang == 0) {
-        drehen = rastZeit[x];
+        fuenfmindrehen = rastZeit[x];
         anfang = 1;
     }
 
-    drehen = constrain( drehen, 1, 99);
-    rastZeit[x] = drehen;
+    fuenfmindrehen = constrain( fuenfmindrehen, 1, 99);
+    rastZeit[x] = fuenfmindrehen;
 
     print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
@@ -1051,7 +1060,6 @@ void funktion_zeiteingabe()      //Modus=22
 // Funktion Braumeister---------------------------------------------
 void funktion_braumeister() //Modus=24
 {
-
     if (anfang == 0) {
         drehen = (int)braumeister[x];
         anfang = 1;
@@ -1175,6 +1183,7 @@ void funktion_tempautomatik()      //Modus=28
 
         drehen = rastTemp[x];
         anfang = 1;
+        wartezeit = millis() + 60000;  // sofort aufheizen
     }
 
     rastTemp[x] = drehen;
