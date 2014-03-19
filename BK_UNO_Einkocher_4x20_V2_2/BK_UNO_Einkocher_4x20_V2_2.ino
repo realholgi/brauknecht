@@ -82,7 +82,6 @@ byte degC[8] = {
 
 //------------------------------------------------------------------
 
-
 //Encoder Initialisierung ----------------------------------------------
 volatile int number = 0;
 volatile boolean halfleft = false;      // Used in both interrupt routines
@@ -144,6 +143,9 @@ enum MODUS {HAUPTSCHIRM = 0,
 enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KUEHLEN, REGL_KOCHEN};
 
 enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
+
+void funktion_startabfrage(MODUS naechsterModus, char *title);
+boolean warte_und_weiter(MODUS naechsterModus);
 
 //Allgemein Initialisierung------------------------------------------
 int anfang = 0;
@@ -217,7 +219,7 @@ void print_lcd (char *st, int x, int y)
     lcd.print(st);
 }
 
-void printNumI_lcd(int num, int x, int y, int length = 0, char filler = ' ')
+void printNumI_lcd(int num, int x, int y)
 {
     char st[10];
     sprintf(st, "%i", num);
@@ -379,14 +381,18 @@ void loop()
 
 
     //Heizregelung----------------------------------------------------
-    if (regelung == REGL_MAISCHEN) {
+    if (regelung == REGL_MAISCHEN || regelung == REGL_KUEHLEN) {
         // Temperaturanzeige Sollwert ---------------------------------------
+        print_lcd("soll ", 9, 1);
         printNumF_lcd(int(sollwert), 15, 1);
         lcd.setCursor(19, 1);
         lcd.write(8);
         //-------------------------------------------------------------------
+    }
 
+    unsigned long now = millis();
 
+    if (regelung == REGL_MAISCHEN) {
         /*
         Regelung beim Hochfahren: Heizung schaltet 0,5°C vor Sollwert aus
          nach einer Wartezeit schaltet es dann um auf hysteresefreie Regelung
@@ -398,35 +404,65 @@ void loop()
          der Temperatur am Schaltpunkt verhindern.
          */
 
-
         //setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
         if ((isttemp <= (sollwert - 4)) && (heizung == 1)) {
             hysterese = 0.5;
         }
 
         //Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
-        if ((heizung == 1) && (isttemp >= (sollwert - hysterese)) && (millis() >= (wartezeit + 60000))) {
+        if ((heizung == 1) && (isttemp >= (sollwert - hysterese)) && (now >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 0;             // Heizung ausschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = millis();    //Start Wartezeitzählung
+            wartezeit = now;    //Start Wartezeitzählung
         }
 
         //Einschalten wenn kleiner Sollwert und dann Wartezeit
-        if ((heizung == 0) && (isttemp <= (sollwert - 0.5)) && (millis() >= (wartezeit + 60000))) {
+        if ((heizung == 0) && (isttemp <= (sollwert - 0.5)) && (now >= (wartezeit + 60000))) {
             // mit Wartezeit für eine Temperaturstabilität
             heizung = 1;             // Heizung einschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = millis();    //Start Wartezeitzählung
+            wartezeit = now;    //Start Wartezeitzählung
         }
 
         //Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
         if ((heizung == 1) && (isttemp >= (sollwert + 0.5))) {
             heizung = 0;             // Heizung ausschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = millis();    //Start Wartezeitzählung
+            wartezeit = now;    //Start Wartezeitzählung
         }
     }
+
+    //Ende Heizregelung---------------------------------------------------
+
+
+    //Kühlregelung -----------------------------------------------------
+    if (regelung == REGL_KUEHLEN) {
+        if ((heizung == 0) && (isttemp >= (sollwert + 1)) && (now >= (wartezeit + 60000))) {
+            // mit Wartezeit für eine Temperaturstabilität
+            heizung = 1;             // einschalten
+            wartezeit = now;    //Start Wartezeitzählung
+        }
+
+        if ((heizung == 1) && (isttemp <= sollwert - 1) && (now >= (wartezeit + 60000))) {
+            // mit Wartezeit für eine Temperaturstabilität
+            heizung = 0;             // ausschalten
+            wartezeit = now;    //Start Wartezeitzählung
+        }
+
+        //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
+        if ((heizung == 1) && (isttemp < (sollwert - 2))) {
+            heizung = 0;             // ausschalten
+            wartezeit = now;    //Start Wartezeitzählung
+        }
+    }
+    //Ende Kühlregelung ---------------------------------------------
+
+    //Kochen => dauernd ein----------------------------------------------
+    if (regelung == REGL_KOCHEN) {
+        heizung = 1;             // einschalten
+    }
+    //Ende Kochen -----------------------------------------------------------
 
     // Zeigt den Buchstaben "H" bzw. "K", wenn Heizen oder Kühlen----------
     // und schalter die Pins--------------------------------------------
@@ -434,15 +470,15 @@ void loop()
     if (heizung == 1) {
         if (zeigeH) {
             switch (regelung) {
+                case REGL_KOCHEN: //Kochen
                 case REGL_MAISCHEN:  //Maischen
                     print_lcd("H", LEFT, 3);
                     break;
+
                 case REGL_KUEHLEN: //Kühlen
                     print_lcd("K", LEFT, 3);
                     break;
-                case REGL_KOCHEN: //Kochen
-                    print_lcd("H", LEFT, 3);
-                    break;
+
                 default:
                     break;
             }
@@ -457,50 +493,13 @@ void loop()
         digitalWrite(schalterH2Pin, HIGH);   // ausschalten
     }
 
-    //Ende Heizregelung---------------------------------------------------
-
-
-    //Kühlregelung -----------------------------------------------------
-    if (regelung == REGL_KUEHLEN) {
-        // Temperaturanzeige Sollwert ---------------------------------------
-        printNumF_lcd(int(sollwert), 15, 1);
-        lcd.setCursor(19, 1);
-        lcd.write(8);
-
-        //-------------------------------------------------------------------
-        if ((isttemp >= (sollwert + 1)) && (millis() >= (wartezeit + 60000))) {
-            // mit Wartezeit für eine Temperaturstabilität
-            heizung = 1;             // einschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-
-        if ((isttemp <= sollwert - 1) && (millis() >= (wartezeit + 60000))) {
-            // mit Wartezeit für eine Temperaturstabilität
-            heizung = 0;             // ausschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-
-        //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
-        if (isttemp < (sollwert - 2)) {
-            heizung = 0;             // ausschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-    }
-    //Ende Kühlregelung ---------------------------------------------
-
-    //Kochen => dauernd ein----------------------------------------------
-    if (regelung == REGL_KOCHEN) {
-        heizung = 1;             // einschalten
-    }
-    //Ende Kochen -----------------------------------------------------------
-
     // Drehgeber und Tastenabfrage -------------------------------------------------
     getButton();  //Taster abfragen
     //---------------------------------------------------------------
 
 
-    zeigeH = true;
     // Abfrage Modus
+    zeigeH = true;
     switch (modus) {
         case HAUPTSCHIRM:  //Hauptschirm
             regelung = REGL_AUS;
@@ -579,26 +578,30 @@ void loop()
         case AUTO_START:  //Startabfrage
             regelung = REGL_AUS;
             zeigeH = false;
-            funktion_startabfrage();
+            funktion_startabfrage(AUTO_MAISCHTEMP, "Auto");
             break;
 
         case AUTO_MAISCHTEMP:  //Automatik Maischtemperatur
             regelung = REGL_MAISCHEN;
+            zeigeH = true;
             funktion_maischtemperaturautomatik();
             break;
 
         case AUTO_RAST_TEMP:  //Automatik Temperatur
             regelung = REGL_MAISCHEN;
+            zeigeH = true;
             funktion_tempautomatik();
             break;
 
         case AUTO_RAST_ZEIT:  //Automatik Zeit
             regelung = REGL_MAISCHEN;
+            zeigeH = true;
             funktion_zeitautomatik();
             break;
 
         case AUTO_ENDTEMP:  //Automatik Endtemperatur
             regelung = REGL_MAISCHEN;
+            zeigeH = true;
             funktion_endtempautomatik();
             break;
 
@@ -629,7 +632,7 @@ void loop()
 
         case KOCHEN_START_FRAGE:  //Startabfrage
             zeigeH = false;
-            funktion_startkochenabfrage();
+            funktion_startabfrage(KOCHEN_AUFHEIZEN, "Kochen");
             break;
 
         case KOCHEN_AUFHEIZEN:  //Aufheizen
@@ -666,7 +669,6 @@ void loop()
 }
 // Ende Loop
 // ------------------------------------------------------------------
-
 
 
 
@@ -731,7 +733,6 @@ int getButton()
 
 // Funktion warte_und_weiter---------------------------------
 
-boolean warte_und_weiter(MODUS naechsterModus);
 boolean warte_und_weiter(MODUS naechsterModus)
 {
     if (ButtonPressed == 0) {
@@ -865,12 +866,11 @@ void funktion_temperatur()      //Modus=1 bzw.2
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("soll", 9, 1);
         anfang = 1;
     }
 
     sollwert = drehen;
-    
+
     switch (modus) {
         case MANUELL:
             print_lcd("Manuell", LEFT, 0);
@@ -1116,11 +1116,11 @@ void funktion_endtempeingabe()      //Modus=25
 //------------------------------------------------------------------
 
 // Funktion Startabfrage--------------------------------------------
-void funktion_startabfrage()      //Modus=26
+void funktion_startabfrage(MODUS naechsterModus, char *title)
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Auto", LEFT, 0);
+        print_lcd(title, LEFT, 0);
         anfang = 1;
         altsekunden = millis();
     }
@@ -1133,8 +1133,9 @@ void funktion_startabfrage()      //Modus=26
         print_lcd("Start ?", CENTER, 2);
     }
 
-    warte_und_weiter(AUTO_MAISCHTEMP);
+    warte_und_weiter(naechsterModus);
 }
+
 //------------------------------------------------------------------
 
 
@@ -1453,29 +1454,6 @@ void funktion_hopfengaben()      //Modus=42
 }
 //------------------------------------------------------------------
 
-
-// Funktion Startkochenabfrage-------------------------------------------
-void funktion_startkochenabfrage()      //Modus=43
-{
-    if (anfang == 0) {
-        lcd.clear();
-        print_lcd("Kochen", LEFT, 0);
-        anfang = 1;
-        altsekunden = millis();
-    }
-
-    if (millis() >= (altsekunden + 1000)) {
-        print_lcd("       ", CENTER, 2);
-        if (millis() >= (altsekunden + 1500)) {
-            altsekunden = millis();
-        }
-    } else {
-        print_lcd("Start ?", CENTER, 2);
-    }
-
-    warte_und_weiter(KOCHEN_AUFHEIZEN);
-}
-//------------------------------------------------------------------
 
 // Funktion Kochenaufheizen-------------------------------------------
 void funktion_kochenaufheizen()      //Modus=44
