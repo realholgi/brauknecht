@@ -866,7 +866,7 @@ void funktion_temperatur()      //Modus=1 bzw.2
     if (anfang == 0) {
         lcd.clear();
         print_lcd("soll", 9, 1);
-        anfang == 1;
+        anfang = 1;
     }
 
     sollwert = drehen;
