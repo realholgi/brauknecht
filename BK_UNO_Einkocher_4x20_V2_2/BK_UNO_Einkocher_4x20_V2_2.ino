@@ -95,8 +95,8 @@ enum PinAssignments {
     encoderPinB = 3,   // left
     tasterPin = 5,    // another  pins
     oneWirePin = 6,
-    schalterH1Pin = 7,  // Heizung Relais1
-    schalterH2Pin = 8,  // Heizung Relais2
+    schalterH1Pin = 7,  // Heizung Relais1 = Ruehrer
+    schalterH2Pin = 8,  // Heizung Relais2 = Heizung
     schalterBPin = 14,  // Braumeisterruf A0
     schalterFPin = 15, // Braumeisterruf A1
 };
@@ -484,14 +484,12 @@ void loop()
                     break;
             }
         }
-        digitalWrite(schalterH1Pin, LOW);   // einschalten
-        digitalWrite(schalterH2Pin, LOW);   // einschalten
+        digitalWrite(schalterH2Pin, LOW);   // Heizung einschalten
     } else {
         if (zeigeH) {
             print_lcd(" ", LEFT, 3);
         }
-        digitalWrite(schalterH1Pin, HIGH);   // ausschalten
-        digitalWrite(schalterH2Pin, HIGH);   // ausschalten
+        digitalWrite(schalterH2Pin, HIGH);   // Heizung ausschalten
     }
 
     if (millis() >= (serwartezeit + 1000)) {
@@ -765,6 +763,7 @@ void funktion_hauptschirm()      //Modus=0
 {
     if (anfang == 0) {
         lcd.clear();
+        digitalWrite(schalterH1Pin, HIGH);
         print_lcd("Maischen", 2, 0);
         print_lcd("Kochen", 2, 1);
         print_lcd("Timer", 2, 2);
@@ -823,6 +822,7 @@ void funktion_hauptschirm()      //Modus=0
 void funktion_maischmenue()      //Modus=01
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Manuell", 2, 0);
         print_lcd("Automatik", 2, 1);
@@ -879,10 +879,10 @@ void funktion_temperatur()      //Modus=1 bzw.2
     }
 
     sollwert = drehen;
-
     switch (modus) {
         case MANUELL:
             print_lcd("Manuell", LEFT, 0);
+            digitalWrite(schalterH1Pin, LOW);
             break;
 
         case NACHGUSS:
@@ -919,6 +919,7 @@ void funktion_temperatur()      //Modus=1 bzw.2
 void funktion_rastanzahl()          //Modus=19
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
@@ -992,6 +993,7 @@ void funktion_maischtemperatur()      //Modus=20
 {
 
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
@@ -1018,6 +1020,7 @@ void funktion_rasteingabe()      //Modus=21
 
     if (anfang == 0) {
         lcd.clear();
+        digitalWrite(schalterH1Pin, HIGH);
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         drehen = rastTemp[x];
@@ -1044,6 +1047,7 @@ void funktion_zeiteingabe()      //Modus=22
 
     if (anfang == 0) {
         fuenfmindrehen = rastZeit[x];
+        digitalWrite(schalterH1Pin, HIGH);
         anfang = 1;
     }
 
@@ -1062,6 +1066,7 @@ void funktion_braumeister() //Modus=24
 {
     if (anfang == 0) {
         drehen = (int)braumeister[x];
+        digitalWrite(schalterH1Pin, HIGH);
         anfang = 1;
     }
 
@@ -1105,6 +1110,7 @@ void funktion_endtempeingabe()      //Modus=25
 
     if (anfang == 0) {
         lcd.clear();
+        digitalWrite(schalterH1Pin, HIGH);
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         drehen = endtemp;
@@ -1127,6 +1133,7 @@ void funktion_endtempeingabe()      //Modus=25
 void funktion_startabfrage(MODUS naechsterModus, char *title)
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd(title, LEFT, 0);
         anfang = 1;
@@ -1151,6 +1158,7 @@ void funktion_startabfrage(MODUS naechsterModus, char *title)
 void funktion_maischtemperaturautomatik()      //Modus=27
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, LOW);
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Maischen", RIGHT, 0);
@@ -1175,7 +1183,7 @@ void funktion_maischtemperaturautomatik()      //Modus=27
 void funktion_tempautomatik()      //Modus=28
 {
     if (anfang == 0) {
-
+        digitalWrite(schalterH1Pin, LOW);
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         printNumI_lcd(x, 13, 0);
@@ -1203,6 +1211,7 @@ void funktion_zeitautomatik()      //Modus=29
 {
     if (anfang == 0) {
         drehen = rastZeit[x];              //Zuordnung für Encoder
+        digitalWrite(schalterH1Pin, LOW);
     }
 
     print_lcd_minutes(rastZeit[x], RIGHT, 2);
@@ -1273,6 +1282,7 @@ void funktion_zeitautomatik()      //Modus=29
 void funktion_endtempautomatik()      //Modus=30
 {
     if (anfang == 0) {
+         digitalWrite(schalterH1Pin, LOW);
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Endtemp", RIGHT, 0);
@@ -1301,6 +1311,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
     if (anfang == 0) {
         rufsignalzeit = millis();
         anfang = 1;
+         digitalWrite(schalterH1Pin, HIGH);
     }
 
     if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
@@ -1356,6 +1367,7 @@ void funktion_braumeisterruf()      //Modus=32
 {
     if (anfang == 0) {
         anfang = 1;
+         digitalWrite(schalterH1Pin, HIGH);
     }
 
 
@@ -1386,6 +1398,7 @@ void funktion_kochzeit()      //Modus=40
 {
     if (anfang == 0) {
         lcd.clear();
+        digitalWrite(schalterH1Pin, HIGH);
         print_lcd("Kochen", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Zeit", LEFT, 1);
@@ -1407,6 +1420,7 @@ void funktion_kochzeit()      //Modus=40
 void funktion_anzahlhopfengaben()      //Modus=41
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
@@ -1431,6 +1445,7 @@ void funktion_hopfengaben()      //Modus=42
 
     if (anfang == 0) {
         x = 1;
+        digitalWrite(schalterH1Pin, HIGH);
         fuenfmindrehen = hopfenZeit[x];
         anfang = 1;
         lcd.clear();
@@ -1468,6 +1483,7 @@ void funktion_hopfengaben()      //Modus=42
 void funktion_kochenaufheizen()      //Modus=44
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
         anfang = 1;
@@ -1492,6 +1508,7 @@ void funktion_kochenaufheizen()      //Modus=44
 void funktion_hopfenzeitautomatik()      //Modus=45
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         x = 1;
         anfang = 1;
         lcd.clear();
@@ -1605,6 +1622,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 void funktion_timer()      //Modus=60
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         lcd.clear();
         print_lcd("Timer", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
@@ -1628,6 +1646,7 @@ void funktion_timer()      //Modus=60
 void funktion_timerlauf()      //Modus=61
 {
     if (anfang == 0) {
+        digitalWrite(schalterH1Pin, HIGH);
         drehen = timer;
 
         anfang = 1;
