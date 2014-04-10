@@ -97,7 +97,7 @@ enum PinAssignments {
     oneWirePin = 6,
     ruehrerPin = 7,  // Heizung Relais1 = Ruehrer
     heizungPin = 8,  // Heizung Relais2 = Heizung
-    schalterBPin = 14,  // Braumeisterruf A0
+    beeperPin = 14,  // Braumeisterruf A0
     schalterFPin = 15, // Braumeisterruf A1
 };
 
@@ -247,7 +247,7 @@ void setup()
 
     pinMode(ruehrerPin, OUTPUT);   // initialize the digital pin as an output.
     pinMode(heizungPin, OUTPUT);   // initialize the digital pin as an output.
-    pinMode(schalterBPin, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(beeperPin, OUTPUT);   // initialize the digital pin as an output.
     pinMode(schalterFPin, OUTPUT);   // initialize the digital pin as an output.
 
     digitalWrite(ruehrerPin, HIGH);   // ausschalten
@@ -281,10 +281,10 @@ void setup()
 
     if (0) { // FIXME
         for (x = 1; x < 3; x++) {
-            digitalWrite(schalterBPin, HIGH);   // Alarmtest
+            digitalWrite(beeperPin, HIGH);   // Alarmtest
             digitalWrite(schalterFPin, HIGH);   // Funkalarmtest
             delay(200);
-            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+            digitalWrite(beeperPin, LOW);   // Alarm ausschalten
             digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
             delay(200);
         }
@@ -632,7 +632,7 @@ void loop()
 
         case AUTO_ENDTEMP:  //Automatik Endtemperatur
             regelung = REGL_MAISCHEN;
-            ruehrer = false;
+            ruehrer = true;
             zeigeH = true;
             funktion_endtempautomatik();
             break;
@@ -1337,7 +1337,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
         print_lcd("          ", LEFT, 3);
-        digitalWrite(schalterBPin, LOW);
+        digitalWrite(beeperPin, LOW);
         if (millis() >= (altsekunden + 1500)) {
             altsekunden = millis();
             pause++;
@@ -1345,7 +1345,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
     } else {
         print_lcd("RUF", LEFT, 3);
         if (pause <= 4) {
-            digitalWrite(schalterBPin, HIGH);
+            digitalWrite(beeperPin, HIGH);
         }
         if (pause > 8) {
             pause = 0;
@@ -1363,7 +1363,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
     if (braumeister[y] == BM_ALARM_SIGNAL && millis() >= (rufsignalzeit + 20000)) {
         anfang = 0;
         pause = 0;
-        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
         digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         modus = rufmodus;
         einmaldruck = false;
@@ -1372,7 +1372,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     if (warte_und_weiter(BRAUMEISTERRUF)) {
         pause = 0;
-        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
         digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         if (braumeister[y] == BM_ALARM_SIGNAL) {
             print_lcd("   ", LEFT, 3);
@@ -1389,7 +1389,6 @@ void funktion_braumeisterruf()      //Modus=32
     if (anfang == 0) {
         anfang = 1;
     }
-
 
     if (millis() >= (altsekunden + 1000)) {
         print_lcd("        ", LEFT, 3);
@@ -1508,9 +1507,9 @@ void funktion_kochenaufheizen()      //Modus=44
     if (isttemp >= 98) {
         print_lcd("            ", RIGHT, 0);
         print_lcd("Kochbeginn", CENTER, 1);
-        digitalWrite(schalterBPin, HIGH);
+        digitalWrite(beeperPin, HIGH);
         delay(500);
-        digitalWrite(schalterBPin, LOW);   //Ruf ausschalten
+        digitalWrite(beeperPin, LOW);   //Ruf ausschalten
         anfang = 0;
         modus = KOCHEN_AUTO_LAUF;
     } else {
@@ -1579,7 +1578,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         zeigeH = false;
         if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
             print_lcd("   ", LEFT, 3);
-            digitalWrite(schalterBPin, LOW);
+            digitalWrite(beeperPin, LOW);
             if (millis() >= (altsekunden + 1500)) {
                 altsekunden = millis();
                 pause++;
@@ -1587,7 +1586,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         } else {
             print_lcd("RUF", LEFT, 3);
             if (pause <= 4) {
-                digitalWrite(schalterBPin, HIGH);
+                digitalWrite(beeperPin, HIGH);
             }
             if (pause > 8) {
                 pause = 0;
@@ -1607,7 +1606,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
             pause = 0;
             zeigeH = true;
             print_lcd("   ", LEFT, 3);
-            digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+            digitalWrite(beeperPin, LOW);   // Alarm ausschalten
             digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
             x++;
             anfang = 1; // nicht zurücksetzen!!!
@@ -1616,7 +1615,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 
     if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Alarmende nach 1 Minute
         pause = 0;
-        digitalWrite(schalterBPin, LOW);   // Alarm ausschalten
+        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
         digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
         x++;
     }
@@ -1718,7 +1717,7 @@ void funktion_abbruch()       // Modus 80
     heizung = false;
     wartezeit = -60000;
     digitalWrite(heizungPin, HIGH);
-    digitalWrite(schalterBPin, LOW);   // ausschalten
+    digitalWrite(beeperPin, LOW);   // ausschalten
     digitalWrite(schalterFPin, LOW);   // ausschalten
     anfang = 0;                     //Daten zurücksetzen
     lcd.clear();                //Rastwerteeingaben
