@@ -95,10 +95,11 @@ enum PinAssignments {
     encoderPinB = 3,   // left
     tasterPin = 5,    // another  pins
     oneWirePin = 6,
-    ruehrerPin = 7,  // Heizung Relais1 = Ruehrer
-    heizungPin = 8,  // Heizung Relais2 = Heizung
+    ruehrerPin = 7,  // Relais1 = Ruehrer
+    heizungPin = 8,  // Relais2 = Heizung
+    heizungExternPin = 9, // Relais3 = Heizung extern
     beeperPin = 14,  // Braumeisterruf A0
-    schalterFPin = 15, // Braumeisterruf A1
+    schalterFPin = 10, // // Relais4 = Beeper extern Braumeisterruf
 };
 
 int drehen;        //drehgeber Werte
@@ -180,23 +181,23 @@ int stunden = 0;                                        //Zeitzählung
 
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
 int sollwert = 20;                                  //Sollwertvorgabe für Anzeige
-int maischtemp = 45;                               //Vorgabe Einmasichtemperatur
-int rasten = 3;                                       //Vorgabe Anzahl Rasten
+int maischtemp = 38;                               //Vorgabe Einmasichtemperatur
+int rasten = 4;                                       //Vorgabe Anzahl Rasten
 int rastTemp[] = {
-    0, 55, 64, 72, 72, 72
+    0, 50, 64, 72, 72, 72
 };        //Rasttemperatur Werte
 int rastZeit[] = {
-    0, 15, 35, 25, 20, 20
+    0, 40, 30, 20, 15, 20
 };              //Rastzeit Werte
 BM_ALARM_MODE braumeister[] = {
-    BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS
+    BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_SIGNAL, BM_ALARM_AUS
 };               //Braumeisterruf standart AUS
 int endtemp = 78;                                   //Vorgabewert Endtemperatur
 
 int kochzeit = 90;
 int hopfenanzahl = 2;
 int hopfenZeit[] = {
-    0, 10, 40, 40, 40, 40, 40
+    0, 10, 80, 80, 80, 40, 40
 };
 int timer = 10;
 
@@ -236,6 +237,26 @@ void printNumF_lcd (double num, int x, int y, byte dec = 1, int length = 0)
     print_lcd(st, x, y);
 }
 
+void ruehrerOn(boolean value)
+{
+    if (value) {
+        digitalWrite(ruehrerPin, LOW); // einschalten
+    } else {
+        digitalWrite(ruehrerPin, HIGH); // ausschalten
+    }
+}
+
+void heizungOn(boolean value)
+{
+    if (value) {
+        digitalWrite(heizungPin, LOW);   // einschalten
+        digitalWrite(heizungExternPin, LOW);   // einschalten
+    } else {
+        digitalWrite(heizungPin, HIGH);   // ausschalten
+        digitalWrite(heizungExternPin, HIGH);   // ausschalten
+    }
+}
+
 //setup=============================================================
 void setup()
 {
@@ -247,11 +268,14 @@ void setup()
 
     pinMode(ruehrerPin, OUTPUT);   // initialize the digital pin as an output.
     pinMode(heizungPin, OUTPUT);   // initialize the digital pin as an output.
+    pinMode(heizungExternPin, OUTPUT);   // initialize the digital pin as an output.
     pinMode(beeperPin, OUTPUT);   // initialize the digital pin as an output.
     pinMode(schalterFPin, OUTPUT);   // initialize the digital pin as an output.
 
-    digitalWrite(ruehrerPin, HIGH);   // ausschalten
-    digitalWrite(heizungPin, HIGH);   // ausschalten
+    ruehrerOn(false);
+    heizungOn(false);
+    digitalWrite(schalterFPin, HIGH);   // ausschalten
+    digitalWrite(beeperPin, HIGH);   // ausschalten
 
     pinMode(tasterPin, INPUT);                    // Pin für Taster
     digitalWrite(tasterPin, HIGH);                // Turn on internal pullup resistor
@@ -373,7 +397,7 @@ void loop()
     // Temperaturanzeige Istwert ---------------------------------------
     if ((!sensorfehler) && (int(sensorwert) != -127)) {
         print_lcd("ist ", 10, 3);
-        printNumF_lcd(float(sensorwert), 15, 3);
+        printNumF_lcd(float(isttemp), 15, 3);
         lcd.setCursor(19, 3);
         lcd.write(8);
     } else {
@@ -432,7 +456,7 @@ void loop()
         if (heizung && (isttemp >= (sollwert + 0.5))) {
             heizung = false;             // Heizung ausschalten
             hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-            wartezeit = 0;           //Start Wartezeitzählung
+            wartezeit = millis();           //Start Wartezeitzählung
         }
     }
 
@@ -486,19 +510,14 @@ void loop()
                     break;
             }
         }
-        digitalWrite(heizungPin, LOW);   // Heizung einschalten
     } else {
         if (zeigeH) {
             print_lcd(" ", LEFT, 3);
         }
-        digitalWrite(heizungPin, HIGH);   // Heizung ausschalten
     }
 
-    if (ruehrer) {
-        digitalWrite(ruehrerPin, LOW);
-    } else {
-        digitalWrite(ruehrerPin, HIGH);
-    }
+    heizungOn(heizung);
+    ruehrerOn(ruehrer);
 
     if (millis() >= (serwartezeit + 1000)) {
         Serial.print(millis());
@@ -794,6 +813,17 @@ boolean warte_und_weiter(MODUS naechsterModus)
 
 //-----------------------------------------------------------------
 
+void menu_zeiger(int pos) {
+    int p;
+    for (p = 0; p <= 3; p++) {
+        if (p == pos) {
+            print_lcd("=>", LEFT, p);
+        } else {
+            print_lcd("  ", LEFT, p);
+        }
+    }
+}
+
 // Funktion Hauptschirm---------------------------------
 void funktion_hauptschirm()      //Modus=0
 {
@@ -809,36 +839,20 @@ void funktion_hauptschirm()      //Modus=0
 
     drehen = constrain(drehen, 0, 3);
 
-    if (drehen == 0) {
-        rufmodus = MAISCHEN;
-        print_lcd("=>", LEFT, 0);
-        print_lcd("  ", LEFT, 1);
-        print_lcd("  ", LEFT, 2);
-        print_lcd("  ", LEFT, 3);
-    }
-
-    if (drehen == 1) {
-        rufmodus = KOCHEN;
-        print_lcd("  ", LEFT, 0);
-        print_lcd("=>", LEFT, 1);
-        print_lcd("  ", LEFT, 2);
-        print_lcd("  ", LEFT, 3);
-    }
-
-    if (drehen == 2) {
-        rufmodus = TIMER;
-        print_lcd("  ", LEFT, 0);
-        print_lcd("  ", LEFT, 1);
-        print_lcd("=>", LEFT, 2);
-        print_lcd("  ", LEFT, 3);
-    }
-
-    if (drehen == 3) {
-        rufmodus = KUEHLEN;
-        print_lcd("  ", LEFT, 0);
-        print_lcd("  ", LEFT, 1);
-        print_lcd("  ", LEFT, 2);
-        print_lcd("=>", LEFT, 3);
+    menu_zeiger(drehen);
+    switch (drehen) {
+        case 0:
+          rufmodus = MAISCHEN;
+          break;
+        case 1:
+          rufmodus = KOCHEN;
+          break;
+        case 2:
+          rufmodus = TIMER;
+          break;
+        case 3:
+          rufmodus = KUEHLEN;
+          break;
     }
 
     if (warte_und_weiter(rufmodus)) {
@@ -858,8 +872,8 @@ void funktion_maischmenue()      //Modus=01
 {
     if (anfang == 0) {
         lcd.clear();
-        print_lcd("Manuell", 2, 0);
-        print_lcd("Automatik", 2, 1);
+        print_lcd("Automatik", 2, 0);
+        print_lcd("Manuell", 2, 1);
         print_lcd("Nachguss", 2, 2);
         drehen = 0;
         anfang = 1;
@@ -867,25 +881,17 @@ void funktion_maischmenue()      //Modus=01
 
     drehen = constrain(drehen, 0, 2);
 
-    if (drehen == 0) {
-        rufmodus = MANUELL;
-        print_lcd("=>", LEFT, 0);
-        print_lcd("  ", LEFT, 1);
-        print_lcd("  ", LEFT, 2);
-    }
-
-    if (drehen == 1) {
-        rufmodus = AUTOMATIK;
-        print_lcd("  ", LEFT, 0);
-        print_lcd("=>", LEFT, 1);
-        print_lcd("  ", LEFT, 2);
-    }
-
-    if (drehen == 2) {
-        rufmodus = NACHGUSS;
-        print_lcd("  ", LEFT, 0);
-        print_lcd("  ", LEFT, 1);
-        print_lcd("=>", LEFT, 2);
+    menu_zeiger(drehen);
+    switch (drehen) {
+        case 0:
+          rufmodus = AUTOMATIK;
+          break;
+        case 1:
+          rufmodus = MANUELL;
+          break;
+        case 2:
+          rufmodus = NACHGUSS;
+          break;
     }
 
     if (warte_und_weiter(rufmodus)) {
@@ -961,6 +967,8 @@ void funktion_rastanzahl()          //Modus=19
         anfang = 1;
     }
 
+    drehen = constrain(drehen, 1, 5);
+
     //Vorgabewerte bei verschiedenen Rasten
     if (rasten != drehen) {
         if ((int)drehen == 1) {
@@ -976,24 +984,24 @@ void funktion_rastanzahl()          //Modus=19
             maischtemp = 55;
         }
         if (drehen == 3) {
-            rastTemp[1] = 55;
-            rastZeit[1] = 15;
+            rastTemp[1] = 50;
+            rastZeit[1] = 40;
             rastTemp[2] = 64;
-            rastZeit[2] = 35;
+            rastZeit[2] = 30;
             rastTemp[3] = 72;
-            rastZeit[3] = 25;
-            maischtemp = 45;
+            rastZeit[3] = 30;
+            maischtemp = 38;
         }
         if (drehen == 4) {
-            rastTemp[1] = 40;
-            rastZeit[1] = 20;
-            rastTemp[2] = 55;
-            rastZeit[2] = 15;
-            rastTemp[3] = 64;
-            rastZeit[3] = 35;
+            rastTemp[1] = 50;
+            rastZeit[1] = 40;
+            rastTemp[2] = 64;
+            rastZeit[2] = 30;
+            rastTemp[3] = 72;
+            rastZeit[3] = 20;
             rastTemp[4] = 72;
-            rastZeit[4] = 25;
-            maischtemp = 35;
+            rastZeit[4] = 15;
+            maischtemp = 38;
         }
         if (drehen == 5) {
             rastTemp[1] = 35;
@@ -1010,7 +1018,6 @@ void funktion_rastanzahl()          //Modus=19
         }
     }
 
-    drehen = constrain(drehen, 1, 5);
     rasten = drehen;
 
     printNumI_lcd(rasten, 19, 1);
@@ -1191,6 +1198,7 @@ void funktion_maischtemperaturautomatik()      //Modus=27
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 10, 105);
     maischtemp = drehen;
     sollwert = maischtemp;
 
@@ -1217,6 +1225,8 @@ void funktion_tempautomatik()      //Modus=28
         anfang = 1;
         wartezeit = millis() + 60000;  // sofort aufheizen
     }
+
+    drehen = constrain( drehen, 10, 105);
 
     rastTemp[x] = drehen;
 
@@ -1279,6 +1289,7 @@ void funktion_zeitautomatik()      //Modus=29
     }
     // Ende Zeitzählung---------------------
 
+    drehen = constrain( drehen, 10, 105);
     rastZeit[x] = drehen;   //Encoderzuordnung
 
     if (minuten >= rastZeit[x]) { // Sollwert erreicht ?
@@ -1312,6 +1323,7 @@ void funktion_endtempautomatik()      //Modus=30
         anfang = 1;
     }
 
+    drehen = constrain( drehen, 10, 105);
     endtemp = drehen;
     sollwert = endtemp;
 
@@ -1459,7 +1471,6 @@ void funktion_anzahlhopfengaben()      //Modus=41
 // Funktion Hopfengaben-------------------------------------------
 void funktion_hopfengaben()      //Modus=42
 {
-
     if (anfang == 0) {
         x = 1;
         fuenfmindrehen = hopfenZeit[x];
@@ -1716,7 +1727,8 @@ void funktion_abbruch()       // Modus 80
     regelung = REGL_AUS;
     heizung = false;
     wartezeit = -60000;
-    digitalWrite(heizungPin, HIGH);
+    heizungOn(false);
+    ruehrerOn(false);
     digitalWrite(beeperPin, LOW);   // ausschalten
     digitalWrite(schalterFPin, LOW);   // ausschalten
     anfang = 0;                     //Daten zurücksetzen
