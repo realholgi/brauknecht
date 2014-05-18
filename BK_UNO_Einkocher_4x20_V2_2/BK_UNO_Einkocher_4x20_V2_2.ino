@@ -88,7 +88,7 @@ volatile boolean halfleft = false;      // Used in both interrupt routines
 volatile boolean halfright = false;     // Used in both interrupt routines
 
 int oldnumber = 0;
-int ButtonPressed = 0;
+boolean ButtonPressed = false;
 
 enum PinAssignments {
     encoderPinA = 2,   // rigtht
@@ -149,21 +149,21 @@ void funktion_startabfrage(MODUS naechsterModus, char *title);
 boolean warte_und_weiter(MODUS naechsterModus);
 
 //Allgemein Initialisierung------------------------------------------
-int anfang = 0;
-float altsekunden;
+boolean anfang = false;
+unsigned long altsekunden;
 REGEL_MODE regelung = REGL_AUS;
 boolean heizung = false;
 boolean ruehrer = false;
 boolean sensorfehler = false;
 float hysterese = 0;
-float wartezeit = -60000;
-float serwartezeit = 0;
+unsigned long wartezeit = -60000;
+//unsigned long serwartezeit = 0;
 float sensorwert;
 float isttemp = 20;                                   //Vorgabe 20 damit Sensorfehler am Anfang nicht anspricht
 int isttemp_ganzzahl;                                 //für Übergabe der isttemp als Ganzzahl
 MODUS modus = HAUPTSCHIRM;
 MODUS rufmodus = HAUPTSCHIRM;
-float rufsignalzeit = 0;
+unsigned long rufsignalzeit = 0;
 boolean nachgussruf = false;                          //Signal wenn Nachgusstemp erreicht
 int x = 1;                                            //aktuelle Rast Nummer
 int y = 1;                                            //Übergabewert von x für Braumeisterruf
@@ -184,13 +184,13 @@ int sollwert = 20;                                  //Sollwertvorgabe für Anzei
 int maischtemp = 38;                               //Vorgabe Einmasichtemperatur
 int rasten = 4;                                       //Vorgabe Anzahl Rasten
 int rastTemp[] = {
-    0, 50, 64, 72, 72, 72
+    0, 50, 64, 72, 72, 72, 72, 72
 };        //Rasttemperatur Werte
 int rastZeit[] = {
-    0, 40, 30, 20, 15, 20
+    0, 40, 30, 20, 15, 20, 20, 20
 };              //Rastzeit Werte
 BM_ALARM_MODE braumeister[] = {
-    BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_SIGNAL, BM_ALARM_AUS
+    BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_SIGNAL, BM_ALARM_AUS, BM_ALARM_AUS, BM_ALARM_AUS
 };               //Braumeisterruf standart AUS
 int endtemp = 78;                                   //Vorgabewert Endtemperatur
 
@@ -261,9 +261,10 @@ void heizungOn(boolean value)
 void setup()
 {
 
-    Serial.begin(9600);           //.........Test Serial
-    Serial.println("Test");         //.........Test Serial
-
+    /*
+        Serial.begin(9600);           //.........Test Serial
+        Serial.println("Test");         //.........Test Serial
+    */
     drehen = sollwert;
 
     pinMode(ruehrerPin, OUTPUT);   // initialize the digital pin as an output.
@@ -519,6 +520,7 @@ void loop()
     heizungOn(heizung);
     ruehrerOn(ruehrer);
 
+    /*
     if (millis() >= (serwartezeit + 1000)) {
         Serial.print(millis());
         Serial.print("\t");
@@ -526,7 +528,7 @@ void loop()
         Serial.println("");
         serwartezeit = millis();
     }
-
+    */
     // Drehgeber und Tastenabfrage -------------------------------------------------
     getButton();  //Taster abfragen
     //---------------------------------------------------------------
@@ -775,15 +777,15 @@ void isr_3()
 
 
 // Funktion Tastendruck getButton-----------------------------------------------
-int getButton()
+boolean getButton()
 {
     //delay(100);
     int ButtonVoltage = digitalRead(tasterPin);
     if (ButtonVoltage  == HIGH) {
-        ButtonPressed = 0;
+        ButtonPressed = false;
         abbruchtaste = millis();
     } else if (ButtonVoltage == LOW) {
-        ButtonPressed = 1;
+        ButtonPressed = true;
         if (millis() >= (abbruchtaste + 2000)) {     //Taste 2 Sekunden drücken
             modus = ABBRUCH;                              //abbruchmodus=modus80
         }
@@ -797,14 +799,14 @@ int getButton()
 
 boolean warte_und_weiter(MODUS naechsterModus)
 {
-    if (ButtonPressed == 0) {
+    if (!ButtonPressed) {
         einmaldruck = true;
     }
     if (einmaldruck == true) {
-        if (ButtonPressed == 1) {
+        if (ButtonPressed) {
             einmaldruck = false;
             modus = naechsterModus;
-            anfang = 0;
+            anfang = true;
             return true;
         }
     }
@@ -813,7 +815,8 @@ boolean warte_und_weiter(MODUS naechsterModus)
 
 //-----------------------------------------------------------------
 
-void menu_zeiger(int pos) {
+void menu_zeiger(int pos)
+{
     int p;
     for (p = 0; p <= 3; p++) {
         if (p == pos) {
@@ -827,14 +830,14 @@ void menu_zeiger(int pos) {
 // Funktion Hauptschirm---------------------------------
 void funktion_hauptschirm()      //Modus=0
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Maischen", 2, 0);
         print_lcd("Kochen", 2, 1);
         print_lcd("Timer", 2, 2);
         print_lcd("Kuehlen", 2, 3);
         drehen = 0;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain(drehen, 0, 3);
@@ -842,17 +845,17 @@ void funktion_hauptschirm()      //Modus=0
     menu_zeiger(drehen);
     switch (drehen) {
         case 0:
-          rufmodus = MAISCHEN;
-          break;
+            rufmodus = MAISCHEN;
+            break;
         case 1:
-          rufmodus = KOCHEN;
-          break;
+            rufmodus = KOCHEN;
+            break;
         case 2:
-          rufmodus = TIMER;
-          break;
+            rufmodus = TIMER;
+            break;
         case 3:
-          rufmodus = KUEHLEN;
-          break;
+            rufmodus = KUEHLEN;
+            break;
     }
 
     if (warte_und_weiter(rufmodus)) {
@@ -870,13 +873,13 @@ void funktion_hauptschirm()      //Modus=0
 // Funktion Hauptschirm---------------------------------
 void funktion_maischmenue()      //Modus=01
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Automatik", 2, 0);
         print_lcd("Manuell", 2, 1);
         print_lcd("Nachguss", 2, 2);
         drehen = 0;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain(drehen, 0, 2);
@@ -884,14 +887,14 @@ void funktion_maischmenue()      //Modus=01
     menu_zeiger(drehen);
     switch (drehen) {
         case 0:
-          rufmodus = AUTOMATIK;
-          break;
+            rufmodus = AUTOMATIK;
+            break;
         case 1:
-          rufmodus = MANUELL;
-          break;
+            rufmodus = MANUELL;
+            break;
         case 2:
-          rufmodus = NACHGUSS;
-          break;
+            rufmodus = NACHGUSS;
+            break;
     }
 
     if (warte_und_weiter(rufmodus)) {
@@ -913,9 +916,9 @@ void funktion_maischmenue()      //Modus=01
 // Funktion nur Temperaturregelung---------------------------------
 void funktion_temperatur()      //Modus=1 bzw.2
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
-        anfang = 1;
+        anfang = false;
     }
 
     sollwert = drehen;
@@ -957,33 +960,36 @@ void funktion_temperatur()      //Modus=1 bzw.2
 // Funktion Eingabe der Rastanzahl------------------------------------
 void funktion_rastanzahl()          //Modus=19
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Rasten", LEFT, 1);
 
         drehen = rasten;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain(drehen, 1, 5);
+    rasten = drehen;
 
     //Vorgabewerte bei verschiedenen Rasten
-    if (rasten != drehen) {
-        if ((int)drehen == 1) {
+    switch (drehen) {
+        case 1:
             rastTemp[1] = 67;
             rastZeit[1] = 30;
             maischtemp = 65;
-        }
-        if (drehen == 2) {
+            break;
+
+        case 2:
             rastTemp[1] = 62;
             rastZeit[1] = 30;
             rastTemp[2] = 72;
             rastZeit[2] = 35;
             maischtemp = 55;
-        }
-        if (drehen == 3) {
+            break;
+
+        case 3:
             rastTemp[1] = 50;
             rastZeit[1] = 40;
             rastTemp[2] = 64;
@@ -991,8 +997,9 @@ void funktion_rastanzahl()          //Modus=19
             rastTemp[3] = 72;
             rastZeit[3] = 30;
             maischtemp = 38;
-        }
-        if (drehen == 4) {
+            break;
+
+        case 4:
             rastTemp[1] = 50;
             rastZeit[1] = 40;
             rastTemp[2] = 64;
@@ -1002,8 +1009,9 @@ void funktion_rastanzahl()          //Modus=19
             rastTemp[4] = 72;
             rastZeit[4] = 15;
             maischtemp = 38;
-        }
-        if (drehen == 5) {
+            break;
+
+        case 5:
             rastTemp[1] = 35;
             rastZeit[1] = 20;
             rastTemp[2] = 40;
@@ -1015,10 +1023,11 @@ void funktion_rastanzahl()          //Modus=19
             rastTemp[5] = 72;
             rastZeit[5] = 25;
             maischtemp = 30;
-        }
-    }
+            break;
 
-    rasten = drehen;
+        default:
+            ;
+    }
 
     printNumI_lcd(rasten, 19, 1);
 
@@ -1031,12 +1040,12 @@ void funktion_rastanzahl()          //Modus=19
 void funktion_maischtemperatur()      //Modus=20
 {
 
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         drehen = maischtemp;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 10, 105);
@@ -1056,12 +1065,12 @@ void funktion_maischtemperatur()      //Modus=20
 void funktion_rasteingabe()      //Modus=21
 {
 
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         drehen = rastTemp[x];
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 9, 105);
@@ -1082,9 +1091,9 @@ void funktion_rasteingabe()      //Modus=21
 void funktion_zeiteingabe()      //Modus=22
 {
 
-    if (anfang == 0) {
+    if (anfang) {
         fuenfmindrehen = rastZeit[x];
-        anfang = 1;
+        anfang = false;
     }
 
     fuenfmindrehen = constrain( fuenfmindrehen, 1, 99);
@@ -1100,9 +1109,9 @@ void funktion_zeiteingabe()      //Modus=22
 // Funktion Braumeister---------------------------------------------
 void funktion_braumeister() //Modus=24
 {
-    if (anfang == 0) {
+    if (anfang) {
         drehen = (int)braumeister[x];
-        anfang = 1;
+        anfang = false;
     }
 
     //delay(200);
@@ -1142,13 +1151,12 @@ void funktion_braumeister() //Modus=24
 // Funktion Ende Temperatur-----------------------------------------
 void funktion_endtempeingabe()      //Modus=25
 {
-
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         drehen = endtemp;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 10, 80);
@@ -1166,10 +1174,10 @@ void funktion_endtempeingabe()      //Modus=25
 // Funktion Startabfrage--------------------------------------------
 void funktion_startabfrage(MODUS naechsterModus, char *title)
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd(title, LEFT, 0);
-        anfang = 1;
+        anfang = false;
         altsekunden = millis();
     }
 
@@ -1190,12 +1198,12 @@ void funktion_startabfrage(MODUS naechsterModus, char *title)
 // Funktion Automatik Maischtemperatur---------------------------------
 void funktion_maischtemperaturautomatik()      //Modus=27
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Maischen", RIGHT, 0);
         drehen = maischtemp;    //Zuordnung Encoder
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 10, 105);
@@ -1215,26 +1223,25 @@ void funktion_maischtemperaturautomatik()      //Modus=27
 // Funktion Automatik Temperatur------------------------------------
 void funktion_tempautomatik()      //Modus=28
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         printNumI_lcd(x, 13, 0);
         print_lcd(". Rast", RIGHT, 0);
 
         drehen = rastTemp[x];
-        anfang = 1;
+        anfang = false;
         wartezeit = millis() + 60000;  // sofort aufheizen
     }
 
     drehen = constrain( drehen, 10, 105);
 
     rastTemp[x] = drehen;
-
     sollwert = rastTemp[x];
 
     if (isttemp >= sollwert) { // Sollwert erreicht ?
         modus = AUTO_RAST_ZEIT;              //zur Zeitautomatik
-        anfang = 0;
+        anfang = true;
     }
 }
 //------------------------------------------------------------------
@@ -1243,14 +1250,14 @@ void funktion_tempautomatik()      //Modus=28
 // Funktion Automatik Zeit------------------------------------------
 void funktion_zeitautomatik()      //Modus=29
 {
-    if (anfang == 0) {
+    if (anfang) {
         drehen = rastZeit[x];              //Zuordnung für Encoder
     }
 
     print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
     // Zeitzählung---------------
-    if (anfang == 0) {
+    if (anfang) {
         print_lcd("Set Time", LEFT, 3);
 
         setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
@@ -1262,7 +1269,7 @@ void funktion_zeitautomatik()      //Modus=29
         stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
 
         print_lcd("            ", 0, 3);
-        anfang = 1;
+        anfang = false;
         print_lcd("00:00", LEFT, 2);
     }
 
@@ -1293,7 +1300,7 @@ void funktion_zeitautomatik()      //Modus=29
     rastZeit[x] = drehen;   //Encoderzuordnung
 
     if (minuten >= rastZeit[x]) { // Sollwert erreicht ?
-        anfang = 0;
+        anfang = true;
         y = x;
         if (x < rasten) {
             modus = AUTO_RAST_TEMP;              // zur Temperaturregelung
@@ -1315,12 +1322,12 @@ void funktion_zeitautomatik()      //Modus=29
 // Funktion Automatik Endtemperatur---------------------------------
 void funktion_endtempautomatik()      //Modus=30
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Auto", LEFT, 0);
         print_lcd("Endtemp", RIGHT, 0);
         drehen = endtemp;    //Zuordnung Encoder
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 10, 105);
@@ -1342,9 +1349,9 @@ void funktion_endtempautomatik()      //Modus=30
 // Funktion braumeisterrufalarm---------------------------------------
 void funktion_braumeisterrufalarm()      //Modus=31
 {
-    if (anfang == 0) {
+    if (anfang) {
         rufsignalzeit = millis();
-        anfang = 1;
+        anfang = false;
     }
 
     if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
@@ -1373,7 +1380,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     //20 Sekunden Rufsignalisierung wenn "Ruf Signal"
     if (braumeister[y] == BM_ALARM_SIGNAL && millis() >= (rufsignalzeit + 20000)) {
-        anfang = 0;
+        anfang = true;
         pause = 0;
         digitalWrite(beeperPin, LOW);   // Alarm ausschalten
         digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
@@ -1398,8 +1405,8 @@ void funktion_braumeisterrufalarm()      //Modus=31
 // Funktion braumeisterruf------------------------------------------
 void funktion_braumeisterruf()      //Modus=32
 {
-    if (anfang == 0) {
-        anfang = 1;
+    if (anfang) {
+        anfang = false;
     }
 
     if (millis() >= (altsekunden + 1000)) {
@@ -1427,14 +1434,14 @@ void funktion_braumeisterruf()      //Modus=32
 // Funktion Kochzeit-------------------------------------------------
 void funktion_kochzeit()      //Modus=40
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Zeit", LEFT, 1);
 
         fuenfmindrehen = kochzeit;
-        anfang = 1;
+        anfang = false;
     }
 
     fuenfmindrehen = constrain( fuenfmindrehen, 20, 180);
@@ -1449,14 +1456,14 @@ void funktion_kochzeit()      //Modus=40
 // Funktion Anzahl der Hopfengaben------------------------------------------
 void funktion_anzahlhopfengaben()      //Modus=41
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Hopfengaben", LEFT, 1);
 
         drehen = hopfenanzahl;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain(drehen, 1, 5);
@@ -1471,10 +1478,10 @@ void funktion_anzahlhopfengaben()      //Modus=41
 // Funktion Hopfengaben-------------------------------------------
 void funktion_hopfengaben()      //Modus=42
 {
-    if (anfang == 0) {
+    if (anfang) {
         x = 1;
         fuenfmindrehen = hopfenZeit[x];
-        anfang = 1;
+        anfang = false;
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
@@ -1496,7 +1503,7 @@ void funktion_hopfengaben()      //Modus=42
             print_lcd("  ", LEFT, 1);
             print_lcd("   ", 13, 2);
             delay(400);
-            anfang = 1; // nicht auf Anfang zurück
+            anfang = false; // nicht auf Anfang zurück
         } else {
             x = 1;
             modus = KOCHEN_START_FRAGE;
@@ -1509,10 +1516,10 @@ void funktion_hopfengaben()      //Modus=42
 // Funktion Kochenaufheizen-------------------------------------------
 void funktion_kochenaufheizen()      //Modus=44
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
-        anfang = 1;
+        anfang = false;
     }
 
     if (isttemp >= 98) {
@@ -1521,7 +1528,7 @@ void funktion_kochenaufheizen()      //Modus=44
         digitalWrite(beeperPin, HIGH);
         delay(500);
         digitalWrite(beeperPin, LOW);   //Ruf ausschalten
-        anfang = 0;
+        anfang = true;
         modus = KOCHEN_AUTO_LAUF;
     } else {
         print_lcd("Aufheizen", RIGHT, 0);
@@ -1533,9 +1540,8 @@ void funktion_kochenaufheizen()      //Modus=44
 // Funktion Hopfengaben Benachrichtigung------------------------------------------
 void funktion_hopfenzeitautomatik()      //Modus=45
 {
-    if (anfang == 0) {
+    if (anfang) {
         x = 1;
-        anfang = 1;
         lcd.clear();
         print_lcd("Kochen", LEFT, 0);
 
@@ -1547,7 +1553,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
         stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
 
-        anfang = 1;
+        anfang = false;
         print_lcd("00:00", 11, 1);
     }
 
@@ -1620,7 +1626,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
             digitalWrite(beeperPin, LOW);   // Alarm ausschalten
             digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
             x++;
-            anfang = 1; // nicht zurücksetzen!!!
+            anfang = false; // nicht zurücksetzen!!!
         }
     }
 
@@ -1646,14 +1652,14 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 // Funktion Timer-------------------------------------------------
 void funktion_timer()      //Modus=60
 {
-    if (anfang == 0) {
+    if (anfang) {
         lcd.clear();
         print_lcd("Timer", LEFT, 0);
         print_lcd("Eingabe", RIGHT, 0);
         print_lcd("Zeit", LEFT, 2);
 
         drehen = timer;
-        anfang = 1;
+        anfang = false;
     }
 
     drehen = constrain( drehen, 1, 99);
@@ -1669,10 +1675,10 @@ void funktion_timer()      //Modus=60
 // Funktion Timerlauf-------------------------------------------------
 void funktion_timerlauf()      //Modus=61
 {
-    if (anfang == 0) {
+    if (anfang) {
         drehen = timer;
 
-        anfang = 1;
+        anfang = false;
         lcd.clear();
         print_lcd("Timer", LEFT, 0);
         print_lcd("Set Time", RIGHT, 0);
@@ -1731,7 +1737,7 @@ void funktion_abbruch()       // Modus 80
     ruehrerOn(false);
     digitalWrite(beeperPin, LOW);   // ausschalten
     digitalWrite(schalterFPin, LOW);   // ausschalten
-    anfang = 0;                     //Daten zurücksetzen
+    anfang = true;                     //Daten zurücksetzen
     lcd.clear();                //Rastwerteeingaben
     rufmodus = HAUPTSCHIRM;                   //bleiben erhalten
     x = 1;                          //bei
