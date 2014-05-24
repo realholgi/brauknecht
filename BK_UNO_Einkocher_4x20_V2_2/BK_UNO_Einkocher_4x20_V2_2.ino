@@ -149,7 +149,7 @@ void funktion_startabfrage(MODUS naechsterModus, char *title);
 boolean warte_und_weiter(MODUS naechsterModus);
 
 //Allgemein Initialisierung------------------------------------------
-boolean anfang = false;
+boolean anfang = true;
 unsigned long altsekunden;
 REGEL_MODE regelung = REGL_AUS;
 boolean heizung = false;
@@ -224,7 +224,7 @@ void print_lcd (char *st, int x, int y)
 
 void printNumI_lcd(int num, int x, int y)
 {
-    char st[10];
+    char st[27];
     sprintf(st, "%i", num);
     print_lcd(st, x, y);
 }
@@ -235,6 +235,15 @@ void printNumF_lcd (double num, int x, int y, byte dec = 1, int length = 0)
 
     dtostrf(num, length, dec, st );
     print_lcd(st, x, y);
+}
+
+void beeperOn(boolean value)
+{
+    if (value) {
+        digitalWrite(beeperPin, HIGH); // einschalten
+    } else {
+        digitalWrite(beeperPin, LOW); // ausschalten
+    }
 }
 
 void ruehrerOn(boolean value)
@@ -249,7 +258,7 @@ void ruehrerOn(boolean value)
 void heizungOn(boolean value)
 {
     if (value) {
-        digitalWrite(heizungPin, LOW);   // einschalten
+        //digitalWrite(heizungPin, LOW);   // einschalten FIXME
         digitalWrite(heizungExternPin, LOW);   // einschalten
     } else {
         digitalWrite(heizungPin, HIGH);   // ausschalten
@@ -257,6 +266,14 @@ void heizungOn(boolean value)
     }
 }
 
+void funkrufOn(boolean value)
+{
+    if (value) {
+        //digitalWrite(schalterFPin, LOW); // einschalten FIXME
+    } else {
+        digitalWrite(schalterFPin, HIGH); // ausschalten
+    }
+}
 //setup=============================================================
 void setup()
 {
@@ -275,8 +292,8 @@ void setup()
 
     ruehrerOn(false);
     heizungOn(false);
-    digitalWrite(schalterFPin, HIGH);   // ausschalten
-    digitalWrite(beeperPin, HIGH);   // ausschalten
+    beeperOn(false);
+    funkrufOn(false);   // ausschalten
 
     pinMode(tasterPin, INPUT);                    // Pin für Taster
     digitalWrite(tasterPin, HIGH);                // Turn on internal pullup resistor
@@ -306,11 +323,11 @@ void setup()
 
     if (0) { // FIXME
         for (x = 1; x < 3; x++) {
-            digitalWrite(beeperPin, HIGH);   // Alarmtest
-            digitalWrite(schalterFPin, HIGH);   // Funkalarmtest
+            beeperOn(true);
+            funkrufOn(true);   // Funkalarmtest
             delay(200);
-            digitalWrite(beeperPin, LOW);   // Alarm ausschalten
-            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+            beeperOn(false);
+            funkrufOn(false);   // Funkalarm ausschalten
             delay(200);
         }
     }
@@ -1356,7 +1373,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
         print_lcd("          ", LEFT, 3);
-        digitalWrite(beeperPin, LOW);
+        beeperOn(false);
         if (millis() >= (altsekunden + 1500)) {
             altsekunden = millis();
             pause++;
@@ -1364,7 +1381,7 @@ void funktion_braumeisterrufalarm()      //Modus=31
     } else {
         print_lcd("RUF", LEFT, 3);
         if (pause <= 4) {
-            digitalWrite(beeperPin, HIGH);
+            beeperOn(true);
         }
         if (pause > 8) {
             pause = 0;
@@ -1373,17 +1390,17 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
 
     if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-        digitalWrite(schalterFPin, HIGH);    //Funkalarm ausschalten
+        funkrufOn(true);;    //Funkalarm ausschalten
     } else {
-        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+        funkrufOn(false);;   // Funkalarm ausschalten
     }
 
     //20 Sekunden Rufsignalisierung wenn "Ruf Signal"
     if (braumeister[y] == BM_ALARM_SIGNAL && millis() >= (rufsignalzeit + 20000)) {
         anfang = true;
         pause = 0;
-        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
-        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+        beeperOn(false);   // Alarm ausschalten
+        funkrufOn(false);;   // Funkalarm ausschalten
         modus = rufmodus;
         einmaldruck = false;
     }
@@ -1391,8 +1408,8 @@ void funktion_braumeisterrufalarm()      //Modus=31
 
     if (warte_und_weiter(BRAUMEISTERRUF)) {
         pause = 0;
-        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
-        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+        beeperOn(false);   // Alarm ausschalten
+        funkrufOn(false);   // Funkalarm ausschalten
         if (braumeister[y] == BM_ALARM_SIGNAL) {
             print_lcd("   ", LEFT, 3);
             modus = rufmodus;
@@ -1525,9 +1542,9 @@ void funktion_kochenaufheizen()      //Modus=44
     if (isttemp >= 98) {
         print_lcd("            ", RIGHT, 0);
         print_lcd("Kochbeginn", CENTER, 1);
-        digitalWrite(beeperPin, HIGH);
+        beeperOn(true);
         delay(500);
-        digitalWrite(beeperPin, LOW);   //Ruf ausschalten
+        beeperOn(false);
         anfang = true;
         modus = KOCHEN_AUTO_LAUF;
     } else {
@@ -1595,7 +1612,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         zeigeH = false;
         if (millis() >= (altsekunden + 1000)) { //Bliken der Anzeige und RUF
             print_lcd("   ", LEFT, 3);
-            digitalWrite(beeperPin, LOW);
+            beeperOn(false);
             if (millis() >= (altsekunden + 1500)) {
                 altsekunden = millis();
                 pause++;
@@ -1603,7 +1620,7 @@ void funktion_hopfenzeitautomatik()      //Modus=45
         } else {
             print_lcd("RUF", LEFT, 3);
             if (pause <= 4) {
-                digitalWrite(beeperPin, HIGH);
+                beeperOn(true);
             }
             if (pause > 8) {
                 pause = 0;
@@ -1612,9 +1629,9 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 
 
         if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-            digitalWrite(schalterFPin, HIGH);    //Funkalarm einschalten
+            funkrufOn(true);    //Funkalarm einschalten
         } else {
-            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+            funkrufOn(false);   // Funkalarm ausschalten
         }
         //-----------
 
@@ -1623,8 +1640,8 @@ void funktion_hopfenzeitautomatik()      //Modus=45
             pause = 0;
             zeigeH = true;
             print_lcd("   ", LEFT, 3);
-            digitalWrite(beeperPin, LOW);   // Alarm ausschalten
-            digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+            beeperOn(false);   // Alarm ausschalten
+            funkrufOn(false);   // Funkalarm ausschalten
             x++;
             anfang = false; // nicht zurücksetzen!!!
         }
@@ -1632,8 +1649,8 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 
     if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Alarmende nach 1 Minute
         pause = 0;
-        digitalWrite(beeperPin, LOW);   // Alarm ausschalten
-        digitalWrite(schalterFPin, LOW);   // Funkalarm ausschalten
+        beeperOn(false);   // Alarm ausschalten
+        funkrufOn(false);   // Funkalarm ausschalten
         x++;
     }
 
@@ -1735,8 +1752,8 @@ void funktion_abbruch()       // Modus 80
     wartezeit = -60000;
     heizungOn(false);
     ruehrerOn(false);
-    digitalWrite(beeperPin, LOW);   // ausschalten
-    digitalWrite(schalterFPin, LOW);   // ausschalten
+    beeperOn(false);  // ausschalten
+    funkrufOn(false);   // ausschalten
     anfang = true;                     //Daten zurücksetzen
     lcd.clear();                //Rastwerteeingaben
     rufmodus = HAUPTSCHIRM;                   //bleiben erhalten
