@@ -74,7 +74,7 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x3f, 20, 4);
-
+#include <avr/wdt.h>
 
 byte degC[8] = {
     B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
@@ -342,6 +342,7 @@ void setup()
     // set the resolution to 9 bit (Each Dallas/Maxim device is capable of several different resolutions)
     sensors.setResolution(insideThermometer, 9);
     //---------------------------------------------------------------
+    watchdogSetup();
 }
 
 
@@ -747,6 +748,7 @@ void loop()
     }
 
     // -----------------------------------------------------------------
+    wdt_reset();
 }
 // Ende Loop
 // ------------------------------------------------------------------
@@ -1793,3 +1795,33 @@ void print_lcd_minutes (int value, int x, int y)
     }
     print_lcd(" min", x + 3, y);
 }
+
+void watchdogSetup(void)
+{
+    cli(); // disable all interrupts
+    wdt_reset(); // reset the WDT timer
+    /*
+    WDTCSR configuration:
+    WDIE = 1: Interrupt Enable
+    WDE = 1: Reset Enable
+    WDP3 = 0 :For 2000ms Time-out
+    WDP2 = 1 :For 2000ms Time-out
+    WDP1 = 1 :For 2000ms Time-out
+    WDP0 = 1 :For 2000ms Time-out
+    */
+    // Enter Watchdog Configuration mode:
+    WDTCSR |= (1 << WDCE) | (1 << WDE);
+    // Set Watchdog settings:
+    WDTCSR = (1 << WDIE) | (1 << WDE) | (0 << WDP3) | (1 << WDP2) | (1 << WDP1) | (1 << WDP0);
+    sei();
+}
+
+ISR(WDT_vect) // Watchdog timer interrupt.
+{
+    heizungOn(false);
+    ruehrerOn(false);
+    beeperOn(true); // beeeeeeeeeeep
+    while(true);
+}
+
+
