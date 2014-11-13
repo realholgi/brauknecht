@@ -324,7 +324,7 @@ void ruehrerOn(boolean value)
 void heizungOn(boolean value)
 {
     if (value) {
-        //digitalWrite(heizungPin, LOW);   // einschalten FIXME
+        digitalWrite(heizungPin, LOW);   // einschalten FIXME
         digitalWrite(heizungExternPin, LOW);   // einschalten
     } else {
         digitalWrite(heizungPin, HIGH);   // ausschalten
