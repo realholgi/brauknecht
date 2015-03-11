@@ -128,11 +128,15 @@ DeviceAddress insideThermometer;
 #include <Time.h>
 //------------------------------------------------------------------
 
+//EEPROM für Hystere-------------------------------------------------
+#include <EEPROM.h>   //EEPROM Programmsierung für Hysteresewert
+//------------------------------------------------------------------
+
 int val = 0;           // Variable um Messergebnis zu speichern
 //-----------------------------------------------------------------
 
 enum MODUS {HAUPTSCHIRM = 0,
-            MANUELL, NACHGUSS, MAISCHEN, KUEHLEN,
+            MANUELL, NACHGUSS, MAISCHEN, SETUP,
             EINGABE_RAST_ANZ, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP, EINGABE_RAST_TEMP, EINGABE_RAST_ZEIT, EINGABE_BRAUMEISTERRUF, EINGABE_ENDTEMP,
             AUTO_START, AUTO_MAISCHTEMP, AUTO_RAST_TEMP, AUTO_RAST_ZEIT, AUTO_ENDTEMP,
             BRAUMEISTERRUFALARM, BRAUMEISTERRUF,
@@ -141,7 +145,7 @@ enum MODUS {HAUPTSCHIRM = 0,
             ABBRUCH, ALARMTEST
            };
 
-enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KUEHLEN, REGL_KOCHEN};
+enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KOCHEN};
 
 enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
 
@@ -156,6 +160,7 @@ boolean heizung = false;
 boolean ruehrer = false;
 boolean sensorfehler = false;
 float hysterese = 0;
+int hysteresespeicher = 5;
 unsigned long wartezeit = -60000;
 //unsigned long serwartezeit = 0;
 float sensorwert;
@@ -314,7 +319,7 @@ void setup()
     lcd.clear();
     lcd.noCursor();
 
-    print_lcd("BK V2.2 - LC2004", LEFT, 0);
+    print_lcd("BK V2.3 - LC2004", LEFT, 0);
     print_lcd("Arduino", LEFT, 1);
     print_lcd(":)", RIGHT, 2);
     print_lcd("realholgi & fg100", RIGHT, 3);
@@ -342,6 +347,13 @@ void setup()
     // set the resolution to 9 bit (Each Dallas/Maxim device is capable of several different resolutions)
     sensors.setResolution(insideThermometer, 9);
     //---------------------------------------------------------------
+
+    //Hysteresewert Einlesen ----------------------------------------------
+    hysteresespeicher = EEPROM.read(0);
+    hysterese = hysteresespeicher;   //Zuweisung in einer Zeile gibt Probleme mit float
+    hysterese = hysterese / 10;      //Zuweisung in einer Zeile gibt Probleme mit float
+    //-------------------------------------------------------------
+
     watchdogSetup();
 }
 
@@ -349,6 +361,10 @@ void setup()
 //loop=============================================================
 void loop()
 {
+
+    //Hystereseeinstellung -------------------------------------------------------
+    if (hysteresespeicher > 40)     //Bei erster Anwendung des IC nötig
+    { funktion_hysterese(); }
 
     // Zeitermittlung ------------------------------------------------------
     sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
@@ -379,13 +395,13 @@ void loop()
     // Sensorfehler 0.00 => Datenleitung oder GND fehlt
 
 
-    if (regelung == REGL_MAISCHEN || regelung == REGL_KUEHLEN) { //nur bei Masichen bzw. Kühlen
+    if (regelung == REGL_MAISCHEN) { //nur bei Masichen
         if ((int)isttemp == -127 || (int)isttemp == 0 ) {
             //zur besseren Erkennung Umwandling in (int)-Wert
             //sonst Probleme mit der Erkennung gerade bei 0.00
             if (!sensorfehler) {
                 rufmodus = modus;
-                print_lcd("Sensorfehlr", RIGHT, 3);
+                print_lcd("Sensorfehler", RIGHT, 2);
                 regelung = REGL_AUS;
                 heizung = false;
                 ruehrer = false;
@@ -427,7 +443,7 @@ void loop()
 
 
     //Heizregelung----------------------------------------------------
-    if (regelung == REGL_MAISCHEN || regelung == REGL_KUEHLEN) {
+    if (regelung == REGL_MAISCHEN) {
         // Temperaturanzeige Sollwert ---------------------------------------
         print_lcd("soll ", 9, 1);
         printNumF_lcd(int(sollwert), 15, 1);
@@ -452,7 +468,8 @@ void loop()
 
         //setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
         if ((isttemp <= (sollwert - 4)) && (heizung == 1)) {
-            hysterese = 0.5;
+            hysterese = hysteresespeicher;   //Zuweisung in einer Zeile gibt Probleme mit float
+            hysterese = hysterese / 10;      //Zuweisung in einer Zeile gibt Probleme mit float
         }
 
         //Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
@@ -481,29 +498,6 @@ void loop()
 
     //Ende Heizregelung---------------------------------------------------
 
-
-    //Kühlregelung -----------------------------------------------------
-    if (regelung == REGL_KUEHLEN) {
-        if ((!heizung) && (isttemp >= (sollwert + 1)) && (millis() >= (wartezeit + 60000))) {
-            // mit Wartezeit für eine Temperaturstabilität
-            heizung = true;             // einschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-
-        if (heizung && (isttemp <= sollwert - 1) && (millis() >= (wartezeit + 60000))) {
-            // mit Wartezeit für eine Temperaturstabilität
-            heizung = false;             // ausschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-
-        //Ausschalten vor der Wartezeit, wenn Sollwert um 2 unterschritten
-        if (heizung && (isttemp < (sollwert - 2))) {
-            heizung = false;             // ausschalten
-            wartezeit = millis();    //Start Wartezeitzählung
-        }
-    }
-    //Ende Kühlregelung ---------------------------------------------
-
     //Kochen => dauernd ein----------------------------------------------
     if (regelung == REGL_KOCHEN) {
         heizung = true;             // einschalten
@@ -519,10 +513,6 @@ void loop()
                 case REGL_KOCHEN: //Kochen
                 case REGL_MAISCHEN:  //Maischen
                     print_lcd("H", LEFT, 3);
-                    break;
-
-                case REGL_KUEHLEN: //Kühlen
-                    print_lcd("K", LEFT, 3);
                     break;
 
                 default:
@@ -583,11 +573,10 @@ void loop()
             funktion_temperatur();
             break;
 
-        case KUEHLEN:  //Kühlen
-            regelung = REGL_KUEHLEN;
+        case SETUP:  //Setup
             ruehrer = false;
-            zeigeH = true;
-            funktion_temperatur();
+            zeigeH = false;
+            funktion_hysterese();
             break;
 
         case ALARMTEST: //Alarmtest
@@ -854,7 +843,7 @@ void funktion_hauptschirm()      //Modus=0
         print_lcd("Maischen", 2, 0);
         print_lcd("Kochen", 2, 1);
         print_lcd("Timer", 2, 2);
-        print_lcd("Kuehlen", 2, 3);
+        print_lcd("Setup", 2, 3);
         drehen = 0;
         anfang = false;
     }
@@ -873,16 +862,11 @@ void funktion_hauptschirm()      //Modus=0
             rufmodus = TIMER;
             break;
         case 3:
-            rufmodus = KUEHLEN;
+            rufmodus = SETUP;
             break;
     }
 
     if (warte_und_weiter(rufmodus)) {
-        if (modus == KUEHLEN) {
-            //Übergabe an Modus1
-            isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
-            drehen = isttemp_ganzzahl;  //ganzzahliger Vorgabewert
-        }                               //für Sollwert
         lcd.clear();
     }
 }
@@ -894,8 +878,8 @@ void funktion_maischmenue()      //Modus=01
 {
     if (anfang) {
         lcd.clear();
-        print_lcd("Automatik", 2, 0);
-        print_lcd("Manuell", 2, 1);
+        print_lcd("Manuell", 2, 0);
+        print_lcd("Automatik", 2, 1);
         print_lcd("Nachguss", 2, 2);
         drehen = 0;
         anfang = false;
@@ -906,10 +890,10 @@ void funktion_maischmenue()      //Modus=01
     menu_zeiger(drehen);
     switch (drehen) {
         case 0:
-            rufmodus = AUTOMATIK;
+            rufmodus = MANUELL;
             break;
         case 1:
-            rufmodus = MANUELL;
+            rufmodus = AUTOMATIK;
             break;
         case 2:
             rufmodus = NACHGUSS;
@@ -948,10 +932,6 @@ void funktion_temperatur()      //Modus=1 bzw.2
 
         case NACHGUSS:
             print_lcd("Nachguss", LEFT, 0);
-            break;
-
-        case KUEHLEN:
-            print_lcd("Kuehlen", LEFT, 0);
             break;
 
         default:
@@ -1449,6 +1429,27 @@ void funktion_braumeisterruf()      //Modus=32
 }
 //------------------------------------------------------------------
 
+// Funktion Hysterese-------------------------------------------------
+void funktion_hysterese() //Modus 10
+{
+    if (anfang) {
+        lcd.clear();
+        print_lcd("Setup", LEFT, 0);
+        print_lcd("Eingabe", RIGHT, 0);
+
+        fuenfmindrehen = hysteresespeicher;
+        anfang = false;
+    }
+
+    fuenfmindrehen = constrain( fuenfmindrehen, 0, 40); //max. 4,0 Sekunden Hysterese
+    hysteresespeicher = fuenfmindrehen; //5min-Sprünge
+
+    printNumF_lcd(float(hysteresespeicher) / 10, RIGHT, 1);
+
+    if (warte_und_weiter(HAUPTSCHIRM)) {
+        EEPROM.write(0, hysteresespeicher);
+    }
+}
 
 // Funktion Kochzeit-------------------------------------------------
 void funktion_kochzeit()      //Modus=40
@@ -1768,7 +1769,7 @@ void funktion_abbruch()       // Modus 80
     drehen = sollwert;          //Zuweisung für Funktion Temperaturregelung
 
     if (millis() >= (abbruchtaste + 5000)) { //länger als 5 Sekunden drücken
-        modus = ALARMTEST;                    //Alarmtest
+        modus = SETUP;                    //Setup
     } else {
         modus = HAUPTSCHIRM;                    //Hauptmenue
     }
@@ -1821,7 +1822,7 @@ ISR(WDT_vect) // Watchdog timer interrupt.
     heizungOn(false);
     ruehrerOn(false);
     beeperOn(true); // beeeeeeeeeeep
-    while(true);
+    while (true);
 }
 
 
