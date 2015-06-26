@@ -946,12 +946,12 @@ void funktion_temperatur()      //Modus=1 bzw.2
     }
 
     if ((modus == MANUELL) && (isttemp >= sollwert)) { //Manuell -> Sollwert erreicht
-        rufmodus = ABBRUCH;                //Abbruch nach Rufalarm
+        rufmodus = MANUELL;                //Abbruch nach Rufalarm
         modus = BRAUMEISTERRUFALARM;
-        regelung = REGL_AUS;              //Regelung aus
-        heizung = false;               //Heizung aus
+        //regelung = REGL_AUS;              //Regelung aus
+        //heizung = false;               //Heizung aus
         y = 0;
-        braumeister[y] = BM_ALARM_WAIT;        // Ruf und Abbruch
+        braumeister[y] = BM_ALARM_SIGNAL;        // Ruf und Abbruch
     }
 
     if ((modus == NACHGUSS) && (isttemp >= sollwert) && (nachgussruf == false)) { //Nachguss -> Sollwert erreicht
