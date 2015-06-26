@@ -183,6 +183,7 @@ int minuten = 0;                                        //Zeitzählung
 int minutenwert = 0;                                    //Zeitzählung
 int stunden = 0;                                        //Zeitzählung
 
+boolean hendi_special = true;
 
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
 int sollwert = 20;                                  //Sollwertvorgabe für Anzeige
@@ -501,6 +502,12 @@ void loop()
     //Kochen => dauernd ein----------------------------------------------
     if (regelung == REGL_KOCHEN) {
         heizung = true;             // einschalten
+        if (minuten == 85 && hendi_special) {    // HENDI-Spezial, welche nach 90 min abschaltet
+            heizung = false;
+            delay(1000);
+            heizung = true;
+            hendi_special = false;
+        }
     }
     //Ende Kochen -----------------------------------------------------------
 
