@@ -1258,6 +1258,7 @@ void funktion_zeitautomatik()      //Modus=29
 {
     if (anfang) {
         drehen = rastZeit[x];              //Zuordnung für Encoder
+        wartezeit = millis() + 60000;  // sofort aufheizen
     }
 
     print_lcd_minutes(rastZeit[x], RIGHT, 2);
@@ -1333,6 +1334,7 @@ void funktion_endtempautomatik()      //Modus=30
         print_lcd("Auto", LEFT, 0);
         print_lcd("Endtemp", RIGHT, 0);
         drehen = endtemp;    //Zuordnung Encoder
+        wartezeit = millis() + 60000;  // sofort aufheizen
         anfang = false;
     }
 
