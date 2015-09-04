@@ -188,7 +188,7 @@ boolean hendi_special = true;
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
 int sollwert = 20;                                  //Sollwertvorgabe für Anzeige
 int maischtemp = 38;                               //Vorgabe Einmasichtemperatur
-int rasten = 4;                                       //Vorgabe Anzahl Rasten
+int rasten = 1;                                       //Vorgabe Anzahl Rasten
 int rastTemp[] = {
     0, 50, 64, 72, 72, 72, 72, 72
 };        //Rasttemperatur Werte
@@ -983,7 +983,7 @@ void funktion_rastanzahl()          //Modus=19
     switch (drehen) {
         case 1:
             rastTemp[1] = 67;
-            rastZeit[1] = 30;
+            rastZeit[1] = 60;
             maischtemp = 65;
             break;
 
@@ -996,25 +996,25 @@ void funktion_rastanzahl()          //Modus=19
             break;
 
         case 3:
-            rastTemp[1] = 50;
-            rastZeit[1] = 40;
-            rastTemp[2] = 64;
+            rastTemp[1] = 43;
+            rastZeit[1] = 20;
+            rastTemp[2] = 62;
             rastZeit[2] = 30;
             rastTemp[3] = 72;
             rastZeit[3] = 30;
-            maischtemp = 38;
+            maischtemp = 45;
             break;
 
         case 4:
-            rastTemp[1] = 50;
-            rastZeit[1] = 40;
-            rastTemp[2] = 64;
-            rastZeit[2] = 30;
-            rastTemp[3] = 72;
-            rastZeit[3] = 20;
+            rastTemp[1] = 45;
+            rastZeit[1] = 10;
+            rastTemp[2] = 52;
+            rastZeit[2] = 10;
+            rastTemp[3] = 65;
+            rastZeit[3] = 30;
             rastTemp[4] = 72;
-            rastZeit[4] = 15;
-            maischtemp = 38;
+            rastZeit[4] = 30;
+            maischtemp = 37;
             break;
 
         case 5:
