@@ -1,5 +1,5 @@
 # brauknecht
-Brew Automation with Arduinio
+Brew Automation with Arduino
 
-Pictures and description in german at https://brau.eiboeck.de/meine-brauanlage/
+Pictures and description in German at https://holgi.beer/blog/category/brau-geraetschaft/
 
