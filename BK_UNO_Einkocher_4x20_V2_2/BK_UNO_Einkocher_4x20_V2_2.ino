@@ -7,26 +7,42 @@
 #include <DallasTemperature.h>
 #include <TimeLib.h>
 #include <EEPROM.h>
+#include <FS.h>
 
-#ifdef ESP8266
-#else
+#define XDEBUG
+
+#ifndef ESP8266
 #include <avr/wdt.h>
 #endif
 
+#ifdef ESP8266
 enum PinAssignments {
-  encoderPinA = D6,
-  encoderPinB = D5,
+  encoderPinA = D5,
+  encoderPinB = D6,
   tasterPin = D7,
   oneWirePin = D3,
   heizungPin = D4,
   beeperPin = D8,
 };
+#else
+enum PinAssignments {
+  encoderPinA = 2,
+  encoderPinB = 3,
+  tasterPin = 5,
+  oneWirePin = 6,
+  heizungPin = 8,
+  beeperPin = 14,
+};
+#endif
+
+#define Hysterese 0             //int
+#define Kochschwelle 29             //int
 
 #define LEFT 0
 #define RIGHT 9999
 #define CENTER 9998
 
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+LiquidCrystal_I2C lcd(0x3f, 20, 4); //# 0x27=proto / 0x3f=box
 OneWire oneWire(oneWirePin);
 DallasTemperature sensors(&oneWire);
 DeviceAddress insideThermometer;
@@ -37,7 +53,8 @@ byte degC[8] = {
 };
 
 enum MODUS {HAUPTSCHIRM = 0,
-            MANUELL, NACHGUSS, MAISCHEN, SETUP,
+            MANUELL, NACHGUSS, MAISCHEN,
+            SETUP_MENU, SETUP_HYSTERESE, SETUP_KOCHSCHWELLE,
             EINGABE_RAST_ANZ, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP, EINGABE_RAST_TEMP, EINGABE_RAST_ZEIT, EINGABE_BRAUMEISTERRUF, EINGABE_ENDTEMP,
             AUTO_START, AUTO_MAISCHTEMP, AUTO_RAST_TEMP, AUTO_RAST_ZEIT, AUTO_ENDTEMP,
             BRAUMEISTERRUFALARM, BRAUMEISTERRUF,
@@ -46,25 +63,27 @@ enum MODUS {HAUPTSCHIRM = 0,
             ABBRUCH, ALARMTEST
            };
 
+enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KOCHEN};
+
+enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
+
 void funktion_startabfrage(MODUS naechsterModus, char *title);
 boolean warte_und_weiter(MODUS naechsterModus);
 void print_lcd (char *st, int x, int y);
 void printNumI_lcd(int num, int x, int y);
 void printNumF_lcd (double num, int x, int y, byte dec = 1, int length = 0);
 
-
-enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KOCHEN};
-
-enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
+#ifdef DEBUG
+unsigned long serwartezeit = 0;
+#endif
 
 volatile int number = 0;
-
-int oldnumber = 0;
+volatile int oldnumber = 0;
 boolean ButtonPressed = false;
 
-int val = 0;           // Variable um Messergebnis zu speichern
-int drehen = 0;        //drehgeber Werte
-int fuenfmindrehen = 0;    //drehgeber Werte 5 Minutensprünge
+int val = 0;
+int drehen = 0;
+int fuenfmindrehen = 0;
 
 boolean anfang = true;
 unsigned long altsekunden;
@@ -72,11 +91,10 @@ REGEL_MODE regelung = REGL_AUS;
 boolean heizung = false;
 boolean sensorfehler = false;
 float hysterese = 0;
-int hysteresespeicher = 5;
+byte hysteresespeicher = 5;
 unsigned long wartezeit = -60000;
 float sensorwert;
 float isttemp = 20;                                   //Vorgabe 20 damit Sensorfehler am Anfang nicht anspricht
-int isttemp_ganzzahl;                                 //für Übergabe der isttemp als Ganzzahl
 MODUS modus = HAUPTSCHIRM;
 MODUS rufmodus = HAUPTSCHIRM;
 unsigned long rufsignalzeit = 0;
@@ -86,7 +104,6 @@ int y = 1;                                            //Übergabewert von x für
 int n = 0;                                            //Counter Messungserhöhung zur Fehlervermeidung
 int pause = 0;
 unsigned long abbruchtaste;
-boolean einmaldruck = false;
 boolean zeigeH = false;
 
 int sekunden = 0;
@@ -95,6 +112,8 @@ int minutenwert = 0;
 int stunden = 0;
 
 boolean hendi_special = true;
+bool schwelle_erreicht = false;
+byte kschwelle = 98;
 
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
 int sollwert = 20;
@@ -127,12 +146,13 @@ int timer = 10;
 
 void setup()
 {
-  //Serial.begin(115200);
-  //Serial.println("Start");
+#ifdef DEBUG
+  Serial.begin(115200);
+  Serial.println("BK Start");
+#endif
 
   lcd.init();
-  lcd.init();
-  lcd.createChar(8, degC);         // Celsius
+  lcd.createChar(8, degC);
   lcd.backlight();
   lcd.clear();
   lcd.noCursor();
@@ -141,19 +161,18 @@ void setup()
   print_lcd("Arduino", LEFT, 1);
   print_lcd(":)", RIGHT, 2);
   print_lcd("realholgi & fg100", RIGHT, 3);
-
   delay (500);
 
   drehen = sollwert;
 
-  pinMode(heizungPin, OUTPUT);   // initialize the digital pin as an output.
-  pinMode(beeperPin, OUTPUT);   // initialize the digital pin as an output.
+  pinMode(heizungPin, OUTPUT);
+  pinMode(beeperPin, OUTPUT);
 
   heizungOn(false);
   beeperOn(false);
 
-  pinMode(tasterPin, INPUT_PULLUP);                    // Pin für Taster
-  digitalWrite(tasterPin, HIGH);                // Turn on internal pullup resistor
+  pinMode(tasterPin, INPUT_PULLUP);
+  digitalWrite(tasterPin, HIGH);  // Turn on internal pullup resistor
 
   for (x = 1; x <= 3; x++) {
     beeperOn(true);
@@ -165,20 +184,25 @@ void setup()
   x = 1;
 
   lcd.clear();
-  // ---------------------------------------------------------------
 
-
-  //Temperatursensor DS1820 ----------------------------------------
   sensors.getAddress(insideThermometer, 0);
-  // set the resolution to 9 bit (Each Dallas/Maxim device is capable of several different resolutions)
-  sensors.setResolution(insideThermometer, 9);
-  //---------------------------------------------------------------
+  sensors.setResolution(insideThermometer, 12);   // set the resolution to 9 bit
 
-  //Hysteresewert Einlesen ----------------------------------------------
-  hysteresespeicher = EEPROM.read(0);
-  hysterese = hysteresespeicher;   //Zuweisung in einer Zeile gibt Probleme mit float
-  hysterese = hysterese / 10;      //Zuweisung in einer Zeile gibt Probleme mit float
-  //-------------------------------------------------------------
+  EEPROM.begin(512);
+
+  // Hysterese
+  hysteresespeicher = EEPROM.read(Hysterese);
+  Serial.print("Hysteresespeicher: ");
+  Serial.println(hysteresespeicher);
+  if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
+  hysterese = hysteresespeicher;
+  hysterese = hysterese / 10;
+
+  // Kochschwelle
+  kschwelle = EEPROM.read(Kochschwelle);
+  Serial.print("Kochschwelle: ");
+  Serial.println(kschwelle);
+  if (kschwelle > 100 || kschwelle == 0) (kschwelle = 97);
 
   watchdogSetup();
 }
@@ -187,59 +211,11 @@ void setup()
 //loop=============================================================
 void loop()
 {
-  //Hystereseeinstellung -------------------------------------------------------
-  if (hysteresespeicher > 40)     //Bei erster Anwendung des IC nötig
-  {
-    funktion_hysterese();
-  }
 
-  // Zeitermittlung ------------------------------------------------------
-  sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
-  minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
-  stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
-  //---------------------------------------------------------------
+  sekunden = second();
+  minutenwert = minute();
+  stunden = hour();
 
-
-  // Temperatursensor DS1820 Temperaturabfrage ---------------------
-  // call sensors.requestTemperatures() to issue a global temperature
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  sensorwert = sensors.getTempC(insideThermometer);
-  if ((sensorwert != isttemp) && (n < 5)) { // Messfehlervermeidung
-    // des Sensorwertes
-    n++;                                   // nach mehreren
-  }                                      // Messungen
-  else {
-    isttemp = sensorwert;
-    n = 0;
-  }
-  //---------------------------------------------------------------
-
-
-  // Sensorfehler -------------------------------------------------
-  // Sensorfehler -127 => VCC fehlt
-  // Sensorfehler 85.00 => interner Sensorfehler ggf. Leitung zu lang
-  //                       nicht aktiviert
-  // Sensorfehler 0.00 => Datenleitung oder GND fehlt
-
-
-  if (regelung == REGL_MAISCHEN) { //nur bei Masichen
-    if ((int)isttemp == -127 || (int)isttemp == 0 ) {
-      //zur besseren Erkennung Umwandling in (int)-Wert
-      //sonst Probleme mit der Erkennung gerade bei 0.00
-      if (!sensorfehler) {
-        rufmodus = modus;
-        print_lcd("Sensorfehler", RIGHT, 2);
-        regelung = REGL_AUS;
-        heizung = false;
-        //ruehrer = false;
-        sensorfehler = true;
-        modus = BRAUMEISTERRUFALARM;
-      }
-    }
-  }
-  //-------------------------------------------------------------------
-
-  //Encoder drehen ------------------------------------------------
   long number = encoder.read();
   if (number != oldnumber) {
     {
@@ -250,14 +226,45 @@ void loop()
         --drehen;
         fuenfmindrehen = fuenfmindrehen - 5;
       }
-      oldnumber = number;
+      delay(100); // entprellen
+      oldnumber = encoder.read();
     }
   }
 
-  //---------------------------------------------------------------
+  sensors.requestTemperatures();
+  sensorwert = sensors.getTempC(insideThermometer);
+  if ((sensorwert != isttemp) && (n < 5)) { // Messfehlervermeidung des Sensorwertes
+    n++;
+  }
+  else {
+    isttemp = sensorwert;
+    n = 0;
+  }
 
-  // Temperaturanzeige Istwert ---------------------------------------
-  if ((!sensorfehler) && (int(sensorwert) != -127)) {
+
+  // Sensorfehler -------------------------------------------------
+  // Sensorfehler -127 => VCC fehlt
+  // Sensorfehler 85.00 => interner Sensorfehler ggf. Leitung zu lang
+  //                       nicht aktiviert
+  // Sensorfehler 0.00 => Datenleitung oder GND fehlt
+
+  if (regelung == REGL_MAISCHEN) {
+    if ((int)isttemp == -127 || (int)isttemp == 0 ) {
+      if (!sensorfehler) {
+        rufmodus = modus;
+        print_lcd("Sensorfehler", RIGHT, 2);
+        regelung = REGL_AUS;
+        heizung = false;
+        sensorfehler = true;
+        modus = BRAUMEISTERRUFALARM;
+      }
+    } else {
+      sensorfehler = false;
+    }
+  }
+
+  // Temperaturanzeige Istwert
+  if (!sensorfehler) {
     print_lcd("ist ", 10, 3);
     printNumF_lcd(float(isttemp), 15, 3);
     lcd.setCursor(19, 3);
@@ -266,22 +273,13 @@ void loop()
     print_lcd("   ERR", RIGHT, 3);
   }
 
-  //-------------------------------------------------------------------
-
-
-  //Heizregelung----------------------------------------------------
+  // Heizregelung
   if (regelung == REGL_MAISCHEN) {
-    // Temperaturanzeige Sollwert ---------------------------------------
     print_lcd("soll ", 9, 1);
     printNumF_lcd(int(sollwert), 15, 1);
     lcd.setCursor(19, 1);
     lcd.write(8);
-    //-------------------------------------------------------------------
-    //}
 
-    //unsigned long now = millis();
-
-    //if (regelung == REGL_MAISCHEN) {
     /*
       Regelung beim Hochfahren: Heizung schaltet 0,5°C vor Sollwert aus
       nach einer Wartezeit schaltet es dann um auf hysteresefreie Regelung
@@ -293,41 +291,37 @@ void loop()
       der Temperatur am Schaltpunkt verhindern.
     */
 
-    //setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
+    // setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
     if ((isttemp <= (sollwert - 4)) && (heizung == 1)) {
-      hysterese = hysteresespeicher;   //Zuweisung in einer Zeile gibt Probleme mit float
-      hysterese = hysterese / 10;      //Zuweisung in einer Zeile gibt Probleme mit float
+      hysterese = hysteresespeicher;
+      hysterese = hysterese / 10;
     }
 
-    //Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
+    // Ausschalten wenn Sollwert-Hysterese erreicht und dann Wartezeit
     if (heizung && (isttemp >= (sollwert - hysterese)) && (millis() >= (wartezeit + 60000))) {
-      // mit Wartezeit für eine Temperaturstabilität
-      heizung = false;             // Heizung ausschalten
-      hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-      wartezeit = millis();    //Start Wartezeitzählung
+      heizung = false;
+      hysterese = 0;
+      wartezeit = millis();
     }
 
-    //Einschalten wenn kleiner Sollwert und dann Wartezeit
+    // Einschalten wenn kleiner Sollwert und dann Wartezeit
     if ((!heizung) && (isttemp <= (sollwert - 0.5)) && (millis() >= (wartezeit + 60000))) {
-      // mit Wartezeit für eine Temperaturstabilität
-      heizung = true;             // Heizung einschalten
-      hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-      wartezeit = millis();    //Start Wartezeitzählung
+      heizung = true;
+      hysterese = 0;
+      wartezeit = millis();
     }
 
-    //Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
+    // Ausschalten vor der Wartezeit, wenn Sollwert um 0,5 überschritten
     if (heizung && (isttemp >= (sollwert + 0.5))) {
-      heizung = false;             // Heizung ausschalten
-      hysterese = 0;           //Verschiebung des Schaltpunktes um die Hysterese
-      wartezeit = millis();           //Start Wartezeitzählung
+      heizung = false;
+      hysterese = 0;
+      wartezeit = millis();
     }
   }
 
-  //Ende Heizregelung---------------------------------------------------
-
   //Kochen => dauernd ein----------------------------------------------
   if (regelung == REGL_KOCHEN) {
-    heizung = true;             // einschalten
+    heizung = true;
     if (minuten == 85 && hendi_special) {    // HENDI-Spezial, welche nach 90 min abschaltet
       heizung = false;
       delay(1000);
@@ -335,10 +329,6 @@ void loop()
       hendi_special = false;
     }
   }
-  //Ende Kochen -----------------------------------------------------------
-
-  // Zeigt den Buchstaben "H" bzw. "K", wenn Heizen oder Kühlen----------
-  // und schalter die Pins--------------------------------------------
 
   if (heizung) {
     if (zeigeH) {
@@ -359,260 +349,227 @@ void loop()
   }
 
   heizungOn(heizung);
-  //ruehrerOn(ruehrer);
 
-  /*
-    if (millis() >= (serwartezeit + 1000)) {
-      Serial.print(millis());
-      Serial.print("\t");
-      Serial.print(isttemp);
-      Serial.println("");
-      serwartezeit = millis();
-    }
-  */
-  // Drehgeber und Tastenabfrage -------------------------------------------------
-  getButton();  //Taster abfragen
-  //---------------------------------------------------------------
+#ifdef DEBUG
+  if (millis() >= (serwartezeit + 1000)) {
+    Serial.print(millis());
+    Serial.print("\t");
+    Serial.print(isttemp);
+    Serial.println("");
+    serwartezeit = millis();
+  }
+#endif
 
+  getButton();
 
-  // Abfrage Modus
   zeigeH = true;
   switch (modus) {
-    case HAUPTSCHIRM:  //Hauptschirm
+    case HAUPTSCHIRM:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_hauptschirm();
       break;
 
-    case MANUELL:  //Nur Temperaturregelung
+    case MANUELL:
       regelung = REGL_MAISCHEN;
-      //ruehrer = true;
       zeigeH = true;
       funktion_temperatur();
       break;
 
-    case MAISCHEN:  //Maischmenue
+    case MAISCHEN:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_maischmenue();
       break;
 
-    case NACHGUSS:  //Nachgusswasserbereitung
+    case NACHGUSS:
       regelung = REGL_MAISCHEN;
-      //ruehrer = false;
       zeigeH = true;
       funktion_temperatur();
       break;
 
-    case SETUP:  //Setup
-      //ruehrer = false;
+    case SETUP_MENU:
+      zeigeH = false;
+      funktion_setupmenu();
+      break;
+
+    case SETUP_HYSTERESE:
       zeigeH = false;
       funktion_hysterese();
       break;
 
-    case ALARMTEST: //Alarmtest
+    case SETUP_KOCHSCHWELLE:
+      zeigeH = false;
+      funktion_kochschwelle();
+      break;
+
+    case ALARMTEST:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       rufmodus = HAUPTSCHIRM;
       modus = BRAUMEISTERRUFALARM;
       print_lcd("Alarmtest", RIGHT, 0);
       break;
 
-    case EINGABE_RAST_ANZ:   //Eingabe Anzahl der Rasten
+    case EINGABE_RAST_ANZ:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_rastanzahl();
       break;
 
-    case EINGABE_MAISCHTEMP:  //Eingabe Einmaischtemperatur
+    case EINGABE_MAISCHTEMP:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_maischtemperatur();
       break;
 
-    case EINGABE_RAST_TEMP:  //Eingabe der Temperatur der Rasten
+    case EINGABE_RAST_TEMP:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_rasteingabe();
       break;
 
-    case EINGABE_RAST_ZEIT:  //Eingabe der Rastzeitwerte
+    case EINGABE_RAST_ZEIT:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_zeiteingabe();
       break;
 
-    case EINGABE_BRAUMEISTERRUF:  //Eingabe Braumeisterruf an/aus ?
+    case EINGABE_BRAUMEISTERRUF:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_braumeister();
       break;
 
-    case EINGABE_ENDTEMP:  //Eingabe der Endtemperaturwert
+    case EINGABE_ENDTEMP:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_endtempeingabe();
       break;
 
-    case AUTO_START:  //Startabfrage
+    case AUTO_START:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_startabfrage(AUTO_MAISCHTEMP, "Auto");
       break;
 
-    case AUTO_MAISCHTEMP:  //Automatik Maischtemperatur
+    case AUTO_MAISCHTEMP:
       regelung = REGL_MAISCHEN;
-      //ruehrer = true;
       zeigeH = true;
       funktion_maischtemperaturautomatik();
       break;
 
-    case AUTO_RAST_TEMP:  //Automatik Temperatur
+    case AUTO_RAST_TEMP:
       regelung = REGL_MAISCHEN;
-      //ruehrer = true;
       zeigeH = true;
       funktion_tempautomatik();
       break;
 
-    case AUTO_RAST_ZEIT:  //Automatik Zeit
+    case AUTO_RAST_ZEIT:
       regelung = REGL_MAISCHEN;
-      //ruehrer = true;
       zeigeH = true;
       funktion_zeitautomatik();
       break;
 
-    case AUTO_ENDTEMP:  //Automatik Endtemperatur
+    case AUTO_ENDTEMP:
       regelung = REGL_MAISCHEN;
-      //ruehrer = true;
       zeigeH = true;
       funktion_endtempautomatik();
       break;
 
-    case BRAUMEISTERRUFALARM:  //Braumeisterrufalarm
-      //ruehrer = false;
+    case BRAUMEISTERRUFALARM:
       zeigeH = false;
       funktion_braumeisterrufalarm();
       break;
 
-    case BRAUMEISTERRUF:  //Braumeisterruf
-      //ruehrer = false;
+    case BRAUMEISTERRUF:
       zeigeH = false;
       funktion_braumeisterruf();
       break;
 
-    case KOCHEN:  //Kochen Kochzeit
-      //ruehrer = false;
+    case KOCHEN:
       zeigeH = false;
       funktion_kochzeit();
       break;
 
-    case EINGABE_HOPFENGABEN_ANZAHL:  //Kochen Anzahl der Hopfengaben
-      //ruehrer = false;
+    case EINGABE_HOPFENGABEN_ANZAHL:
       zeigeH = false;
       funktion_anzahlhopfengaben();
       break;
 
-    case EINGABE_HOPFENGABEN_ZEIT:  //Kochen Eingabe der Zeitwerte
-      //ruehrer = false;
+    case EINGABE_HOPFENGABEN_ZEIT:
       zeigeH = false;
       funktion_hopfengaben();
       break;
 
-    case KOCHEN_START_FRAGE:  //Startabfrage
-      //ruehrer = false;
+    case KOCHEN_START_FRAGE:
       zeigeH = false;
       funktion_startabfrage(KOCHEN_AUFHEIZEN, "Kochen");
       break;
 
-    case KOCHEN_AUFHEIZEN:  //Aufheizen
-      regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
-      //ruehrer = false;
+    case KOCHEN_AUFHEIZEN:
+      regelung = REGL_KOCHEN;
       zeigeH = true;
       funktion_kochenaufheizen();
       break;
 
-    case KOCHEN_AUTO_LAUF:  //Kochen Automatik Zeit
-      regelung = REGL_KOCHEN;        //Kochen => dauernd eingeschaltet
-      //ruehrer = false;
+    case KOCHEN_AUTO_LAUF:
+      regelung = REGL_KOCHEN;
       zeigeH = true;
       funktion_hopfenzeitautomatik();
       break;
 
-    case TIMER:  //Timer
+    case TIMER:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_timer();
       break;
 
-    case TIMERLAUF:  //Timerlauf
+    case TIMERLAUF:
       regelung = REGL_AUS;
-      //ruehrer = false;
       zeigeH = false;
       funktion_timerlauf();
       break;
 
-    case ABBRUCH:  //Abbruch
-      //ruehrer = false;
+    case ABBRUCH:
       zeigeH = true;
       funktion_abbruch();
       break;
   }
 
-  // -----------------------------------------------------------------
   wdt_reset();
 }
-// Ende Loop
-// ------------------------------------------------------------------
 
-
-// Funktion Tastendruck getButton-----------------------------------------------
 boolean getButton()
 {
-  //delay(100);
-  int ButtonVoltage = digitalRead(tasterPin);
-  if (ButtonVoltage  == HIGH) {
+  int buttonVoltage = digitalRead(tasterPin);
+  if (buttonVoltage  == HIGH) {
     ButtonPressed = false;
     abbruchtaste = millis();
-  } else if (ButtonVoltage == LOW) {
+  } else if (buttonVoltage == LOW) {
     ButtonPressed = true;
     if (millis() >= (abbruchtaste + 2000)) {     //Taste 2 Sekunden drücken
-      modus = ABBRUCH;                              //abbruchmodus=modus80
+      modus = ABBRUCH;
     }
   }
   return ButtonPressed;
 }
-//--------------------------------------------------------------------
 
-// Funktion warte_und_weiter---------------------------------
+boolean einmaldruck = false;
 
 boolean warte_und_weiter(MODUS naechsterModus)
 {
   if (!ButtonPressed) {
     einmaldruck = true;
   }
-  if (einmaldruck == true) {
-    if (ButtonPressed) {
-      einmaldruck = false;
-      modus = naechsterModus;
-      anfang = true;
-      return true;
-    }
+  if (einmaldruck == true && ButtonPressed) {
+    einmaldruck = false;
+    modus = naechsterModus;
+    anfang = true;
+    return true;
   }
   return false;
 }
-
-//-----------------------------------------------------------------
 
 void menu_zeiger(int pos)
 {
@@ -626,8 +583,7 @@ void menu_zeiger(int pos)
   }
 }
 
-// Funktion Hauptschirm---------------------------------
-void funktion_hauptschirm()      //Modus=0
+void funktion_hauptschirm()
 {
   if (anfang) {
     lcd.clear();
@@ -653,7 +609,7 @@ void funktion_hauptschirm()      //Modus=0
       rufmodus = TIMER;
       break;
     case 3:
-      rufmodus = SETUP;
+      rufmodus = SETUP_MENU;
       break;
   }
 
@@ -661,11 +617,8 @@ void funktion_hauptschirm()      //Modus=0
     lcd.clear();
   }
 }
-//-----------------------------------------------------------------
 
-
-// Funktion Hauptschirm---------------------------------
-void funktion_maischmenue()      //Modus=01
+void funktion_maischmenue()
 {
   if (anfang) {
     lcd.clear();
@@ -694,21 +647,43 @@ void funktion_maischmenue()      //Modus=01
   if (warte_und_weiter(rufmodus)) {
     if (modus == MANUELL) {
       //Übergabe an Modus1
-      isttemp_ganzzahl = isttemp;     //isttemp als Ganzzahl
-      drehen = (isttemp_ganzzahl + 10); //ganzzahliger Vorgabewert 10°C über Ist
-    }                               //für Sollwert
+      drehen = (int)isttemp + 10; // Vorgabewert 10°C über IstWert
+    }
     if (modus == NACHGUSS) {
       //Übergabe an Modus2
-      drehen = endtemp;                    //Nachgusstemperatur
-    }                               //für Sollwert
-    //lcd.clear();
+      drehen = endtemp;  // Vorgabewert Nachgusstemperatur
+    }
   }
 }
-//-----------------------------------------------------------------
 
+void funktion_setupmenu()
+{
+  if (anfang) {
+    lcd.clear();
+    print_lcd("Kochschwelle", 2, 0);
+    print_lcd("Hysterese", 2, 1);
+    drehen = 0;
+    anfang = false;
+  }
 
-// Funktion nur Temperaturregelung---------------------------------
-void funktion_temperatur()      //Modus=1 bzw.2
+  drehen = constrain(drehen, 0, 1);
+
+  menu_zeiger(drehen);
+  switch (drehen) {
+    case 0:
+      rufmodus = SETUP_KOCHSCHWELLE;
+      break;
+    case 1:
+      rufmodus = SETUP_HYSTERESE;
+      break;
+  }
+
+  if (warte_und_weiter(rufmodus)) {
+    lcd.clear();
+  }
+}
+
+void funktion_temperatur()
 {
   if (anfang) {
     lcd.clear();
@@ -729,26 +704,25 @@ void funktion_temperatur()      //Modus=1 bzw.2
       break;
   }
 
-  if ((modus == MANUELL) && (isttemp >= sollwert)) { //Manuell -> Sollwert erreicht
+  if ((modus == MANUELL) && (isttemp >= sollwert)) { // Manuell -> Sollwert erreicht
     rufmodus = MANUELL;                //Abbruch nach Rufalarm
     modus = BRAUMEISTERRUFALARM;
-    //regelung = REGL_AUS;              //Regelung aus
-    //heizung = false;               //Heizung aus
+    //regelung = REGL_AUS;
+    //heizung = false;
     y = 0;
-    braumeister[y] = BM_ALARM_SIGNAL;        // Ruf und Abbruch
+    braumeister[y] = BM_ALARM_SIGNAL;
   }
 
-  if ((modus == NACHGUSS) && (isttemp >= sollwert) && (nachgussruf == false)) { //Nachguss -> Sollwert erreicht
+  if ((modus == NACHGUSS) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
     nachgussruf = true;
-    rufmodus = NACHGUSS;          //Rufalarm
+    rufmodus = NACHGUSS;
     modus = BRAUMEISTERRUFALARM;
     y = 0;
-    braumeister[y] = BM_ALARM_SIGNAL;        //nur Ruf und weiter mit Regelung
+    braumeister[y] = BM_ALARM_SIGNAL;        // nur Ruf und weiter mit Regelung
   }
 }
 
-// Funktion Eingabe der Rastanzahl------------------------------------
-void funktion_rastanzahl()          //Modus=19
+void funktion_rastanzahl()
 {
   if (anfang) {
     lcd.clear();
@@ -763,7 +737,6 @@ void funktion_rastanzahl()          //Modus=19
   drehen = constrain(drehen, 1, 5);
   rasten = drehen;
 
-  //Vorgabewerte bei verschiedenen Rasten
   switch (drehen) {
     case 1:
       rastTemp[1] = 67;
@@ -823,11 +796,8 @@ void funktion_rastanzahl()          //Modus=19
 
   warte_und_weiter(EINGABE_MAISCHTEMP);
 }
-//------------------------------------------------------------------
 
-
-// Funktion Maischtemperatur-----------------------------------------
-void funktion_maischtemperatur()      //Modus=20
+void funktion_maischtemperatur()
 {
   if (anfang) {
     lcd.clear();
@@ -847,13 +817,9 @@ void funktion_maischtemperatur()      //Modus=20
 
   warte_und_weiter(EINGABE_RAST_TEMP);
 }
-//------------------------------------------------------------------
 
-
-// Funktion Rasteingabe Temperatur----------------------------------
-void funktion_rasteingabe()      //Modus=21
+void funktion_rasteingabe()
 {
-
   if (anfang) {
     lcd.clear();
     print_lcd("Auto", LEFT, 0);
@@ -873,13 +839,9 @@ void funktion_rasteingabe()      //Modus=21
 
   warte_und_weiter(EINGABE_RAST_ZEIT);
 }
-//------------------------------------------------------------------
 
-
-// Funktion Rasteingabe Zeit----------------------------------------
-void funktion_zeiteingabe()      //Modus=22
+void funktion_zeiteingabe()
 {
-
   if (anfang) {
     fuenfmindrehen = rastZeit[x];
     anfang = false;
@@ -892,18 +854,13 @@ void funktion_zeiteingabe()      //Modus=22
 
   warte_und_weiter(EINGABE_BRAUMEISTERRUF);
 }
-//------------------------------------------------------------------
 
-
-// Funktion Braumeister---------------------------------------------
-void funktion_braumeister() //Modus=24
+void funktion_braumeister()
 {
   if (anfang) {
     drehen = (int)braumeister[x];
     anfang = false;
   }
-
-  //delay(200);
 
   drehen = constrain( drehen, BM_ALARM_MIN, BM_ALARM_MAX);
   braumeister[x] = (BM_ALARM_MODE)drehen;
@@ -927,18 +884,15 @@ void funktion_braumeister() //Modus=24
   if (warte_und_weiter(EINGABE_ENDTEMP)) {
     if (x < rasten) {
       x++;
-      modus = EINGABE_RAST_TEMP;           //Sprung zur Rasttemperatureingabe
+      modus = EINGABE_RAST_TEMP; // Sprung zur Rasttemperatureingabe
     } else {
       x = 1;
-      modus = EINGABE_ENDTEMP;           //Sprung zur Rastzeiteingabe
+      modus = EINGABE_ENDTEMP; // Sprung zur Rastzeiteingabe
     }
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Ende Temperatur-----------------------------------------
-void funktion_endtempeingabe()      //Modus=25
+void funktion_endtempeingabe()
 {
   if (anfang) {
     lcd.clear();
@@ -958,9 +912,7 @@ void funktion_endtempeingabe()      //Modus=25
 
   warte_und_weiter(AUTO_START);
 }
-//------------------------------------------------------------------
 
-// Funktion Startabfrage--------------------------------------------
 void funktion_startabfrage(MODUS naechsterModus, char *title)
 {
   if (anfang) {
@@ -983,17 +935,13 @@ void funktion_startabfrage(MODUS naechsterModus, char *title)
   warte_und_weiter(naechsterModus);
 }
 
-//------------------------------------------------------------------
-
-
-// Funktion Automatik Maischtemperatur---------------------------------
-void funktion_maischtemperaturautomatik()      //Modus=27
+void funktion_maischtemperaturautomatik()
 {
   if (anfang) {
     lcd.clear();
     print_lcd("Auto", LEFT, 0);
     print_lcd("Maischen", RIGHT, 0);
-    drehen = maischtemp;    //Zuordnung Encoder
+    drehen = maischtemp; // Vorgabewert
     anfang = false;
   }
 
@@ -1001,18 +949,15 @@ void funktion_maischtemperaturautomatik()      //Modus=27
   maischtemp = drehen;
   sollwert = maischtemp;
 
-  if (isttemp >= sollwert) { // Sollwert erreicht ?
+  if (isttemp >= sollwert) {
     rufmodus = AUTO_RAST_TEMP;
     y = 0;
     braumeister[y] = BM_ALARM_WAIT;
     modus = BRAUMEISTERRUFALARM;
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Automatik Temperatur------------------------------------
-void funktion_tempautomatik()      //Modus=28
+void funktion_tempautomatik()
 {
   if (anfang) {
     lcd.clear();
@@ -1031,19 +976,16 @@ void funktion_tempautomatik()      //Modus=28
   rastTemp[x] = drehen;
   sollwert = rastTemp[x];
 
-  if (isttemp >= sollwert) { // Sollwert erreicht ?
-    modus = AUTO_RAST_ZEIT;              //zur Zeitautomatik
+  if (isttemp >= sollwert) {
+    modus = AUTO_RAST_ZEIT;
     anfang = true;
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Automatik Zeit------------------------------------------
-void funktion_zeitautomatik()      //Modus=29
+void funktion_zeitautomatik()
 {
   if (anfang) {
-    drehen = rastZeit[x];              //Zuordnung für Encoder
+    drehen = rastZeit[x];
     //wartezeit = millis() + 60000;  // sofort aufheizen
     heizung = true;
   }
@@ -1053,20 +995,17 @@ void funktion_zeitautomatik()      //Modus=29
   // Zeitzählung---------------
   if (anfang) {
     print_lcd("Set Time", LEFT, 3);
-
-    setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
-
+    setTime(00, 00, 00, 00, 01, 01); // Sekunden auf 0 stellen
     delay(400); //test
 
-    sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
-    minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
-    stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
+    sekunden = second();
+    minutenwert = minute();
+    stunden = hour();
 
     print_lcd("            ", 0, 3);
     anfang = false;
     print_lcd("00:00", LEFT, 2);
   }
-
 
   if (sekunden < 10) {
     printNumI_lcd(sekunden, 4, 2);
@@ -1091,17 +1030,17 @@ void funktion_zeitautomatik()      //Modus=29
   // Ende Zeitzählung---------------------
 
   drehen = constrain( drehen, 10, 105);
-  rastZeit[x] = drehen;   //Encoderzuordnung
+  rastZeit[x] = drehen; // Encoderzuordnung
 
-  if (minuten >= rastZeit[x]) { // Sollwert erreicht ?
+  if (minuten >= rastZeit[x]) {
     anfang = true;
     y = x;
     if (x < rasten) {
-      modus = AUTO_RAST_TEMP;              // zur Temperaturregelung
-      x++;                    // nächste Stufe
+      modus = AUTO_RAST_TEMP;
+      x++;
     } else {
-      x = 1;                              //Endtemperatur
-      modus = AUTO_ENDTEMP;                          //Endtemperatur
+      x = 1; // Endtemperatur
+      modus = AUTO_ENDTEMP;
     }
 
     if (braumeister[y] != BM_ALARM_AUS) {
@@ -1110,17 +1049,14 @@ void funktion_zeitautomatik()      //Modus=29
     }
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Automatik Endtemperatur---------------------------------
-void funktion_endtempautomatik()      //Modus=30
+void funktion_endtempautomatik()
 {
   if (anfang) {
     lcd.clear();
     print_lcd("Auto", LEFT, 0);
     print_lcd("Endtemp", RIGHT, 0);
-    drehen = endtemp;    //Zuordnung Encoder
+    drehen = endtemp;    // Zuordnung Encoder
     //wartezeit = millis() + 60000;  // sofort aufheizen
     heizung = true;
     anfang = false;
@@ -1130,20 +1066,17 @@ void funktion_endtempautomatik()      //Modus=30
   endtemp = drehen;
   sollwert = endtemp;
 
-  if (isttemp >= sollwert) { // Sollwert erreicht ?
-    rufmodus = ABBRUCH;         //Abbruch
+  if (isttemp >= sollwert) {
+    rufmodus = ABBRUCH;
     modus = BRAUMEISTERRUFALARM;
-    regelung = REGL_AUS;              //Regelung aus
-    heizung = false;               //Heizung aus
+    regelung = REGL_AUS;
+    heizung = false;
     y = 0;
     braumeister[y] = BM_ALARM_WAIT;
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion braumeisterrufalarm---------------------------------------
-void funktion_braumeisterrufalarm()      //Modus=31
+void funktion_braumeisterrufalarm()
 {
   if (anfang) {
     rufsignalzeit = millis();
@@ -1165,41 +1098,28 @@ void funktion_braumeisterrufalarm()      //Modus=31
     if (pause > 8) {
       pause = 0;
     }
-  }                                   //Bliken der Anzeige und RUF
+  }
 
-
-  // if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-  //     funkrufOn(true);;    //Funkalarm ausschalten
-  // } else {
-  //     funkrufOn(false);;   // Funkalarm ausschalten
-  // }
-
-  //20 Sekunden Rufsignalisierung wenn "Ruf Signal"
+  // 20 Sekunden Rufsignalisierung wenn "Ruf Signal"
   if (braumeister[y] == BM_ALARM_SIGNAL && millis() >= (rufsignalzeit + 20000)) {
     anfang = true;
     pause = 0;
-    beeperOn(false);   // Alarm ausschalten
-    //funkrufOn(false);;   // Funkalarm ausschalten
+    beeperOn(false);
     modus = rufmodus;
     einmaldruck = false;
   }
-  //weiter mit Programmablauf
 
   if (warte_und_weiter(BRAUMEISTERRUF)) {
     pause = 0;
-    beeperOn(false);   // Alarm ausschalten
-    //funkrufOn(false);   // Funkalarm ausschalten
+    beeperOn(false);
     if (braumeister[y] == BM_ALARM_SIGNAL) {
       print_lcd("   ", LEFT, 3);
       modus = rufmodus;
     }
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion braumeisterruf------------------------------------------
-void funktion_braumeisterruf()      //Modus=32
+void funktion_braumeisterruf()
 {
   if (anfang) {
     anfang = false;
@@ -1215,23 +1135,18 @@ void funktion_braumeisterruf()      //Modus=32
   }
 
   if (warte_und_weiter(rufmodus)) {
-    print_lcd("        ", LEFT, 3);     //Text "weiter ?" löschen
-    print_lcd("             ", RIGHT, 3); //Löscht Text bei
-    sensorfehler = false;                         //Sensorfehler oder Alarmtest
-    delay(500);     //kurze Wartezeit, damit nicht
-    //durch unbeabsichtigtes Drehen
-    //der nächste Vorgabewert
-    //verstellt wird
+    print_lcd("        ", LEFT, 3);     // Text "weiter ?" löschen
+    print_lcd("             ", RIGHT, 3); // Löscht Text bei Sensorfehler oder Alarmtest
+    sensorfehler = false;
+    delay(500);     // kurze Wartezeit, damit nicht durch unbeabsichtigtes Drehen der nächste Vorgabewert verstellt wird
   }
 }
-//------------------------------------------------------------------
 
-// Funktion Hysterese-------------------------------------------------
-void funktion_hysterese() //Modus 10
+void funktion_hysterese()
 {
   if (anfang) {
     lcd.clear();
-    print_lcd("Setup", LEFT, 0);
+    print_lcd("Hysterese", LEFT, 0);
     print_lcd("Eingabe", RIGHT, 0);
 
     fuenfmindrehen = hysteresespeicher;
@@ -1239,17 +1154,38 @@ void funktion_hysterese() //Modus 10
   }
 
   fuenfmindrehen = constrain( fuenfmindrehen, 0, 40); //max. 4,0 Sekunden Hysterese
-  hysteresespeicher = fuenfmindrehen; //5min-Sprünge
+  hysteresespeicher = fuenfmindrehen;
 
   printNumF_lcd(float(hysteresespeicher) / 10, RIGHT, 1);
 
-  if (warte_und_weiter(HAUPTSCHIRM)) {
-    EEPROM.write(0, hysteresespeicher);
+  if (warte_und_weiter(SETUP_MENU)) {
+    EEPROM.write(Hysterese, hysteresespeicher);
+    EEPROM.commit();
   }
 }
 
-// Funktion Kochzeit-------------------------------------------------
-void funktion_kochzeit()      //Modus=40
+void funktion_kochschwelle()
+{
+  if (anfang) {
+    lcd.clear();
+    print_lcd("Kochschwelle", LEFT, 0);
+    print_lcd("Eingabe", RIGHT, 0);
+    drehen = kschwelle;
+    anfang = false;
+  }
+
+  drehen = constrain( drehen, 20, 99);
+  kschwelle = drehen;
+
+  printNumI_lcd(kschwelle, RIGHT, 1);
+
+  if (warte_und_weiter(SETUP_MENU)) {
+    EEPROM.write(Kochschwelle, kschwelle);
+    EEPROM.commit();
+  }
+}
+
+void funktion_kochzeit()
 {
   if (anfang) {
     lcd.clear();
@@ -1262,16 +1198,14 @@ void funktion_kochzeit()      //Modus=40
   }
 
   fuenfmindrehen = constrain( fuenfmindrehen, 20, 180);
-  kochzeit = fuenfmindrehen; //5min-Sprünge
+  kochzeit = fuenfmindrehen;
 
   print_lcd_minutes( kochzeit, RIGHT, 1);
 
   warte_und_weiter(EINGABE_HOPFENGABEN_ANZAHL);
 }
-//------------------------------------------------------------------
 
-// Funktion Anzahl der Hopfengaben------------------------------------------
-void funktion_anzahlhopfengaben()      //Modus=41
+void funktion_anzahlhopfengaben()
 {
   if (anfang) {
     lcd.clear();
@@ -1290,10 +1224,8 @@ void funktion_anzahlhopfengaben()      //Modus=41
 
   warte_und_weiter(EINGABE_HOPFENGABEN_ZEIT);
 }
-//------------------------------------------------------------------
 
-// Funktion Hopfengaben-------------------------------------------
-void funktion_hopfengaben()      //Modus=42
+void funktion_hopfengaben()
 {
   if (anfang) {
     x = 1;
@@ -1327,11 +1259,8 @@ void funktion_hopfengaben()      //Modus=42
     }
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Kochenaufheizen-------------------------------------------
-void funktion_kochenaufheizen()      //Modus=44
+void funktion_kochenaufheizen()
 {
   if (anfang) {
     lcd.clear();
@@ -1351,29 +1280,23 @@ void funktion_kochenaufheizen()      //Modus=44
     print_lcd("Aufheizen", RIGHT, 0);
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Hopfengaben Benachrichtigung------------------------------------------
-void funktion_hopfenzeitautomatik()      //Modus=45
+void funktion_hopfenzeitautomatik()
 {
   if (anfang) {
     x = 1;
     lcd.clear();
     print_lcd("Kochen", LEFT, 0);
-
     setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
-
     print_lcd_minutes(kochzeit, RIGHT, 0);
 
-    sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
-    minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
-    stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
+    sekunden = second();
+    minutenwert = minute();
+    stunden = hour();
 
     anfang = false;
     print_lcd("00:00", 11, 1);
   }
-
 
   if (x <= hopfenanzahl) {
     printNumI_lcd(x, LEFT, 2);
@@ -1425,23 +1348,13 @@ void funktion_hopfenzeitautomatik()      //Modus=45
       if (pause > 8) {
         pause = 0;
       }
-    }                                   //Bliken der Anzeige und RUF
-
-
-    // if ((pause == 4) || (pause == 8)) {   //Funkalarm schalten
-    //     funkrufOn(true);    //Funkalarm einschalten
-    // } else {
-    //     funkrufOn(false);   // Funkalarm ausschalten
-    // }
-    //-----------
-
+    }
 
     if (warte_und_weiter(modus)) {
       pause = 0;
       zeigeH = true;
       print_lcd("   ", LEFT, 3);
-      beeperOn(false);   // Alarm ausschalten
-      //funkrufOn(false);   // Funkalarm ausschalten
+      beeperOn(false);
       x++;
       anfang = false; // nicht zurücksetzen!!!
     }
@@ -1449,25 +1362,21 @@ void funktion_hopfenzeitautomatik()      //Modus=45
 
   if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Alarmende nach 1 Minute
     pause = 0;
-    beeperOn(false);   // Alarm ausschalten
-    //funkrufOn(false);   // Funkalarm ausschalten
+    beeperOn(false);
     x++;
   }
 
   if (minuten >= kochzeit) {   //Kochzeitende
-    rufmodus = ABBRUCH;                //Abbruch nach Rufalarm
+    rufmodus = ABBRUCH;
     modus = BRAUMEISTERRUFALARM;
-    regelung = REGL_AUS;              //Regelung aus
-    heizung = false;               //Heizung aus
+    regelung = REGL_AUS;
+    heizung = false;
     y = 0;
     braumeister[y] = BM_ALARM_WAIT;
   }
 }
-//------------------------------------------------------------------
 
-
-// Funktion Timer-------------------------------------------------
-void funktion_timer()      //Modus=60
+void funktion_timer()
 {
   if (anfang) {
     lcd.clear();
@@ -1486,11 +1395,8 @@ void funktion_timer()      //Modus=60
 
   warte_und_weiter(TIMERLAUF);
 }
-//------------------------------------------------------------------
 
-
-// Funktion Timerlauf-------------------------------------------------
-void funktion_timerlauf()      //Modus=61
+void funktion_timerlauf()
 {
   if (anfang) {
     drehen = timer;
@@ -1499,15 +1405,14 @@ void funktion_timerlauf()      //Modus=61
     lcd.clear();
     print_lcd("Timer", LEFT, 0);
     print_lcd("Set Time", RIGHT, 0);
-
     setTime(00, 00, 00, 00, 01, 01); //.........Sekunden auf 0 stellen
 
     delay(400); //test
     print_lcd("         ", RIGHT, 0);
 
-    sekunden = second();  //aktuell Sekunde abspeichern für die Zeitrechnung
-    minutenwert = minute(); //aktuell Minute abspeichern für die Zeitrechnung
-    stunden = hour();     //aktuell Stunde abspeichern für die Zeitrechnung
+    sekunden = second();
+    minutenwert = minute();
+    stunden = hour();
 
     print_lcd("00:00", LEFT, 2);
   }
@@ -1534,39 +1439,37 @@ void funktion_timerlauf()      //Modus=61
   }
 
   if (minuten >= timer) {   //Timerende
-    rufmodus = ABBRUCH;                //Abbruch nach Rufalarm
+    rufmodus = ABBRUCH;
     modus = BRAUMEISTERRUFALARM;
-    regelung = REGL_AUS;              //Regelung aus
-    heizung = false;               //Heizung aus
+    regelung = REGL_AUS;
+    heizung = false;
     y = 0;
     braumeister[y] = BM_ALARM_WAIT;
   }
 }
-//------------------------------------------------------------------
 
-// Funktion Abbruch-------------------------------------------------
-void funktion_abbruch()       // Modus 80
+void funktion_abbruch()
 {
   regelung = REGL_AUS;
   heizung = false;
   wartezeit = -60000;
   heizungOn(false);
   beeperOn(false);
-  anfang = true;                     //Daten zurücksetzen
-  lcd.clear();                //Rastwerteeingaben
-  rufmodus = HAUPTSCHIRM;                   //bleiben erhalten
-  x = 1;                          //bei
-  y = 1;                          //asm volatile ("  jmp 0");
-  n = 0;                          //wird alles
-  einmaldruck = false;            //zurückgesetetzt
+  anfang = true;
+  lcd.clear();
+  rufmodus = HAUPTSCHIRM;
+  x = 1;
+  y = 1;
+  n = 0;
+  einmaldruck = false;
   nachgussruf = false;
   pause = 0;
-  drehen = sollwert;          //Zuweisung für Funktion Temperaturregelung
+  drehen = sollwert;
 
-  if (millis() >= (abbruchtaste + 5000)) { //länger als 5 Sekunden drücken
-    modus = SETUP;                    //Setup
+  if (millis() >= (abbruchtaste + 5000)) { // länger als 5 Sekunden drücken
+    modus = SETUP_MENU;
   } else {
-    modus = HAUPTSCHIRM;                    //Hauptmenue
+    modus = HAUPTSCHIRM;
   }
   // asm volatile ("  jmp 0");       //reset Arduino
 }
@@ -1681,3 +1584,4 @@ void printNumF_lcd (double num, int x, int y, byte dec, int length)
   dtostrf(num, length, dec, st );
   print_lcd(st, x, y);
 }
+
