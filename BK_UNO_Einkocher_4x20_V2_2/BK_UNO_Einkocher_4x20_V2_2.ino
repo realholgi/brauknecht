@@ -9,11 +9,20 @@
 #include <EEPROM.h>
 #include <FS.h>
 
-#define XDEBUG
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoJson.h> // https://github.com/bblanchon/ArduinoJson
+#include "html.h"
+
+#define DEBUG
 
 #ifndef ESP8266
 #include <avr/wdt.h>
 #endif
+
+#define SSID "eedv"
+#define PASS "***REMOVED***"
 
 #ifdef ESP8266
 enum PinAssignments {
@@ -36,17 +45,19 @@ enum PinAssignments {
 #endif
 
 #define Hysterese 0             //int
-#define Kochschwelle 29             //int
+#define KOCHSCHWELLE 25             //int
 
 #define LEFT 0
 #define RIGHT 9999
 #define CENTER 9998
 
-LiquidCrystal_I2C lcd(0x3f, 20, 4); //# 0x27=proto / 0x3f=box
+LiquidCrystal_I2C lcd(0x27, 20, 4); //# 0x27=proto / 0x3f=box
 OneWire oneWire(oneWirePin);
 DallasTemperature sensors(&oneWire);
 DeviceAddress insideThermometer;
 Encoder encoder(encoderPinA, encoderPinB);
+
+ESP8266WebServer HTTP(80);
 
 byte degC[8] = {
   B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
@@ -113,7 +124,7 @@ int stunden = 0;
 
 boolean hendi_special = true;
 bool schwelle_erreicht = false;
-byte kschwelle = 98;
+byte kschwelle = KOCHSCHWELLE;
 
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
 int sollwert = 20;
@@ -174,12 +185,14 @@ void setup()
   pinMode(tasterPin, INPUT_PULLUP);
   digitalWrite(tasterPin, HIGH);  // Turn on internal pullup resistor
 
+#ifndef DEBUG
   for (x = 1; x <= 3; x++) {
     beeperOn(true);
     delay(200);
     beeperOn(false);
     delay(200);
   }
+#endif
 
   x = 1;
 
@@ -192,25 +205,30 @@ void setup()
 
   // Hysterese
   hysteresespeicher = EEPROM.read(Hysterese);
+  if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
   Serial.print("Hysteresespeicher: ");
   Serial.println(hysteresespeicher);
-  if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
   hysterese = hysteresespeicher;
   hysterese = hysterese / 10;
 
   // Kochschwelle
-  kschwelle = EEPROM.read(Kochschwelle);
+  kschwelle = EEPROM.read(KOCHSCHWELLE);
+  if (kschwelle > 100 || kschwelle == 0) (kschwelle = KOCHSCHWELLE);
   Serial.print("Kochschwelle: ");
   Serial.println(kschwelle);
-  if (kschwelle > 100 || kschwelle == 0) (kschwelle = 97);
 
   watchdogSetup();
+
+  setupWebserver();
+  setupWIFI();
 }
 
 
 //loop=============================================================
 void loop()
 {
+  HTTP.handleClient();
+  MDNS.update();
 
   sekunden = second();
   minutenwert = minute();
@@ -622,8 +640,8 @@ void funktion_maischmenue()
 {
   if (anfang) {
     lcd.clear();
-    print_lcd("Manuell", 2, 0);
-    print_lcd("Automatik", 2, 1);
+    print_lcd("Automatik", 2, 0);
+    print_lcd("Manuell", 2, 01);
     print_lcd("Nachguss", 2, 2);
     drehen = 0;
     anfang = false;
@@ -634,10 +652,10 @@ void funktion_maischmenue()
   menu_zeiger(drehen);
   switch (drehen) {
     case 0:
-      rufmodus = MANUELL;
+      rufmodus = AUTOMATIK ;
       break;
     case 1:
-      rufmodus = AUTOMATIK;
+      rufmodus = MANUELL;
       break;
     case 2:
       rufmodus = NACHGUSS;
@@ -707,8 +725,8 @@ void funktion_temperatur()
   if ((modus == MANUELL) && (isttemp >= sollwert)) { // Manuell -> Sollwert erreicht
     rufmodus = MANUELL;                //Abbruch nach Rufalarm
     modus = BRAUMEISTERRUFALARM;
-    //regelung = REGL_AUS;
-    //heizung = false;
+    regelung = REGL_AUS;
+    heizung = false;
     y = 0;
     braumeister[y] = BM_ALARM_SIGNAL;
   }
@@ -1180,7 +1198,7 @@ void funktion_kochschwelle()
   printNumI_lcd(kschwelle, RIGHT, 1);
 
   if (warte_und_weiter(SETUP_MENU)) {
-    EEPROM.write(Kochschwelle, kschwelle);
+    EEPROM.write(KOCHSCHWELLE, kschwelle);
     EEPROM.commit();
   }
 }
@@ -1268,7 +1286,8 @@ void funktion_kochenaufheizen()
     anfang = false;
   }
 
-  if (isttemp >= 98) {
+  sollwert = kschwelle;
+  if (isttemp >= sollwert) {
     print_lcd("            ", RIGHT, 0);
     print_lcd("Kochbeginn", CENTER, 1);
     beeperOn(true);
@@ -1351,19 +1370,13 @@ void funktion_hopfenzeitautomatik()
     }
 
     if (warte_und_weiter(modus)) {
-      pause = 0;
-      zeigeH = true;
-      print_lcd("   ", LEFT, 3);
-      beeperOn(false);
-      x++;
       anfang = false; // nicht zurücksetzen!!!
+      _next_koch_step();
     }
   }
 
   if ((minuten > hopfenZeit[x]) && (x <= hopfenanzahl)) {  // Alarmende nach 1 Minute
-    pause = 0;
-    beeperOn(false);
-    x++;
+    _next_koch_step();
   }
 
   if (minuten >= kochzeit) {   //Kochzeitende
@@ -1374,6 +1387,14 @@ void funktion_hopfenzeitautomatik()
     y = 0;
     braumeister[y] = BM_ALARM_WAIT;
   }
+}
+
+void _next_koch_step() {
+  print_lcd("   ", LEFT, 3);
+  pause = 0;
+  beeperOn(false);
+  zeigeH = true;
+  x++;
 }
 
 void funktion_timer()
@@ -1585,3 +1606,335 @@ void printNumF_lcd (double num, int x, int y, byte dec, int length)
   print_lcd(st, x, y);
 }
 
+void setupWebserver() {
+  HTTP.on("/", handleRoot);
+  HTTP.on("/data.json", HTTP_GET, [&]() {
+    HTTP.sendHeader("Connection", "close");
+    HTTP.sendHeader("Access-Control-Allow-Origin", "*");
+    return handleDataJson();
+  });
+
+  HTTP.onNotFound(handleNotFound);
+  HTTP.begin();
+  MDNS.addService("http", "tcp", 80);
+}
+
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += HTTP.uri();
+  message += "\nMethod: ";
+  message += (HTTP.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += HTTP.args();
+  message += "\n";
+  for (uint8_t i = 0; i < HTTP.args(); i++) {
+    message += " " + HTTP.argName(i) + ": " + HTTP.arg(i) + "\n";
+  }
+  HTTP.send(404, "text/plain", message);
+}
+
+void handleDataJson() {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+
+  String title;
+  String data;
+  String title2 = "Details";
+
+  char jetzt[10];
+  sprintf(jetzt, "%02i:%02i", (stunden * 60 ) + minuten, sekunden);
+
+  switch (modus) {
+    case HAUPTSCHIRM:
+      title = F("Hauptmenu");
+      break;
+
+    case MAISCHEN:
+      title = F("Maischmenu");
+      break;
+
+    case MANUELL:
+      title = F("Maischen: manuell");
+      break;
+
+    case BRAUMEISTERRUFALARM:
+    case BRAUMEISTERRUF:
+      title = F("Rufalarm");
+      break;
+
+    case EINGABE_RAST_ANZ:
+      title = F("Maisch-Automatik: Eingabe");
+      title2 = F("Rasteneingabe");
+      data = F("<li>Anzahl: ");
+      data += rasten;
+      data += F("</li>");
+      break;
+
+    case EINGABE_MAISCHTEMP:
+      title = F("Maisch-Automatik: Eingabe");
+      title2 = F("Maischetemperatur");
+      data = F("<li>Einmaischen bei ");
+      data += maischtemp;
+      data += F("&deg;C</li>");
+      break;
+
+    case EINGABE_RAST_TEMP:
+      title = F("Maisch-Automatik: Eingabe");
+      title2 = F("Rast ");
+      title2 += x;
+      title2 += F(" von ");
+      title2 += rasten;
+
+      data = F("<li>Rasttemperatur: ");
+      data += rastTemp[x];
+      data += F("&deg;C</li>");
+      break;
+
+    case EINGABE_RAST_ZEIT:
+      title = F("Maisch-Automatik: Eingabe");
+      title2 = F("Rast ");
+      title2 += x;
+      title2 += F(" von ");
+      title2 += rasten;
+
+      data = F("<li>Rasttemperatur: ");
+      data += rastTemp[x];
+      data += F("&deg;C</li>");
+
+      data += F("<li>Rastzeit: ");
+      data += rastZeit[x];
+      data += F(" min.</li>");
+      break;
+
+    case EINGABE_BRAUMEISTERRUF:
+      title = F("Maisch-Automatik");
+      title2 = F("Rast ");
+      title2 += x;
+      title2 += F(" von ");
+      title2 += rasten;
+
+      data = F("<li>Rasttemperatur: ");
+      data += rastTemp[x];
+      data += F("&deg;C</li>");
+
+      data += F("<li>Rastzeit: ");
+      data += rastZeit[x];
+      data += F(" min.</li>");
+
+      data += "<li>Ruf:  ";
+      switch (braumeister[x]) {
+        case BM_ALARM_AUS:
+          data += F("nein");
+          break;
+
+        case BM_ALARM_WAIT:
+          data += F("anhalten");
+          break;
+
+        case BM_ALARM_SIGNAL:
+          data += F("Signal");
+          break;
+
+        default:
+          data += braumeister[x];
+      }
+      data += F("</li>");
+      break;
+
+    case EINGABE_ENDTEMP:
+      title = F("Maisch-Automatik: Eingabe");
+      title2 = F("Endtemperatur: ");
+      data = F("<li>Abmaischen bei ");
+      data += endtemp;
+      data += F("&deg;C</li>");
+      break;
+
+    case AUTO_START:
+      title = F("Maisch-Automatik: Start?");
+      break;
+
+    case AUTO_MAISCHTEMP:
+      title = F("Maisch-Automatik");
+      title2 = F("Aufheizen bis zum Einmaischen");
+      data = F("<li>Einmaischen bei ");
+      data += maischtemp;
+      data += F("&deg;C</li>");
+      break;
+
+    case AUTO_RAST_TEMP:
+      title = F("Maisch-Automatik");  // x (rasten), rastTemp[x]
+      title2 = F("Rast ");
+      title2 += x;
+      title2 += F(" von ");
+      title2 += rasten;
+      data += F("<li>Aufheizen auf ");
+      data += rastTemp[x];
+      data += F("&deg;C<li>");
+      break;
+
+    case AUTO_RAST_ZEIT:
+      title = F("Maisch-Automatik"); // x (rasten), rastZeit[x], minuten, sekunden
+      title2 = F("Rast ");
+      title2 += x;
+      title2 += F(" von ");
+      title2 += rasten;
+      data += F("<li>");
+      data += jetzt;
+      data += F(" von ");
+      data += rastZeit[x];
+      data += F(" min.</li>");
+      break;
+
+    case AUTO_ENDTEMP:
+      title = F("Maisch-Automatik");
+      title2 = F("Aufheizen bis zum Abmaischen");
+      data = F("<li>Abmaischen bei ");
+      data += endtemp;
+      data += F("&deg;C</li>");
+      break;
+
+    case KOCHEN:
+      title = F("Kochen: Eingabe Kochzeit ");
+      title += kochzeit;
+      title += " min.";
+      break;
+
+    case EINGABE_HOPFENGABEN_ANZAHL:
+      title = F("Kochen: Eingabe Anzahl Hopfengaben ");
+      title += hopfenanzahl;
+      break;
+
+    case EINGABE_HOPFENGABEN_ZEIT:
+      title = F("Kochen: Eingabe Hopfenzeit");
+      break;
+
+    case KOCHEN_START_FRAGE:
+      title = F("Kochen: Warten auf Start");
+      break;
+
+    case KOCHEN_AUFHEIZEN:
+      title = F("Kochen: Aufheizen");
+      break;
+
+    case KOCHEN_AUTO_LAUF:// x (hopfenanzahl), hopfenZeit[x], minuten, sekunden, kochzeit
+      title = F("Kochen");
+
+      title2 = "Kochzeit gesamt: ";
+      title2 += kochzeit;
+      title2 += " min";
+
+      data = "<li>";
+      data += x;
+      data += ". Hopfengabe bei ";
+      data += hopfenZeit[x];
+      data += " min</li>";
+
+      data += "<li>Aktuell: ";
+      data += jetzt;
+      data += " min</li>";
+      break;
+
+    case TIMER:
+      title = F("Timer ");
+      title += timer;
+      title += " min.";
+      break;
+
+    case TIMERLAUF:
+      title = F("Timer ");
+
+      data += "<li>Soll: ";
+      data += timer;
+      data += " min</li>";
+
+      data += "<li>Ist: ";
+      data += jetzt;
+      data += " min</li>";
+      break;
+
+    default:
+      title = F("Modus: ");
+      title += modus;
+  }
+
+  json["title"] = title;
+  json["title2"] = title2;
+  json["temp_ist"] = isttemp;
+  json["temp_soll"] = sollwert;
+  json["heizung"] = heizung ? "an" : "aus";
+
+  json["data"] = data;
+
+  json["modus"] = (int)modus;
+  json["rufmodus"] = (int)rufmodus;
+
+  json["maischtemp"] = maischtemp;
+  json["rast_anzahl"] = rasten;
+  json["rast_nr"] = x;
+  json["rast_temp"] = rastTemp[x];
+  json["rast_zeit_soll"] = rastZeit[x];
+  json["rast_zeit_ist"] = jetzt;
+
+  json["timer_soll"] = timer;
+  json["timer_ist"] = jetzt;
+
+  json["kochzeit"] = kochzeit;
+  json["hopfenanzahl"] = hopfenanzahl;
+
+  JsonArray& all_rast_temp = json.createNestedArray("all_rast_temp");
+  all_rast_temp.copyFrom(rastTemp);
+  all_rast_temp.removeAt(0);
+
+  JsonArray& all_rast_zeit = json.createNestedArray("all_rast_zeit");
+  all_rast_zeit.copyFrom(rastZeit);
+  all_rast_zeit.removeAt(0);
+
+  JsonArray& all_hopfen_zeit = json.createNestedArray("all_hopfen_zeit");
+  all_hopfen_zeit.copyFrom(hopfenZeit);
+  all_hopfen_zeit.removeAt(0);
+
+  String message = "";
+  json.printTo(message);
+  HTTP.send(200, "application/json;charset=utf-8", message);
+}
+
+void handleRoot() {
+  HTTP.send(200, "text/html", PAGE_Kochen);
+}
+
+bool setupWIFI() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(SSID, PASS);
+  MDNS.begin("bk");
+
+  Serial.println(F("Enabling WIFI"));
+  unsigned long startTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println(F("WiFi connected"));
+    Serial.print(F("IP address: "));
+    Serial.println(WiFi.localIP());
+
+    Serial.print("signal strength (RSSI):");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+    return true;
+  } else {
+    Serial.println(F("Can not connect to WiFi station. Go into AP mode."));
+    WiFi.mode(WIFI_AP);
+
+    delay(10);
+
+    WiFi.softAP("bk", "bk");
+
+    Serial.print(F("IP address: "));
+    Serial.println(WiFi.softAPIP());
+  }
+  return false;
+}
