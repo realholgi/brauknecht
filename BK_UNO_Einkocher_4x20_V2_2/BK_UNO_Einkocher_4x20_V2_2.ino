@@ -1900,7 +1900,7 @@ void handleDataJson() {
 }
 
 void handleRoot() {
-  HTTP.send(200, "text/html", PAGE_Kochen);
+  HTTP.send_P(200, "text/html", PAGE_Kochen);
 }
 
 bool setupWIFI() {
