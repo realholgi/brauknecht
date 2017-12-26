@@ -84,7 +84,6 @@ int x = 1;                                            //aktuelle Rast Nummer
 int y = 1;                                            //Übergabewert von x für Braumeisterruf
 int n = 0;                                            //Counter Messungserhöhung zur Fehlervermeidung
 int pause = 0;
-unsigned long abbruchtaste;
 boolean zeigeH = false;
 
 uint32_t lastService = 0;
@@ -133,7 +132,7 @@ void setup()
   Serial.begin(115200);
 #endif
 
-  SerialOut(F("BK Start"));
+  SerialOut(F("\nBK Start"));
   SerialOut("\nFW " FIRMWAREVERSION);
   SerialOut(ESP.getSdkVersion());
 
@@ -193,13 +192,13 @@ void setup()
   {
     if (c > 10)
       break;
-    SerialOut('.', false);
+    SerialOut(F('.'), false);
     delay(100);
     c++;
     _wifiCred = (WiFi.SSID() != "");
   }
   if (!_wifiCred) {
-    SerialOut("ERROR no Wifi credentials. Providing default...");
+    SerialOut(F("ERROR no Wifi credentials. Providing default..."));
     my_ssid = WIFI_SSID;
     my_psk = WIFI_PSK;
   }
@@ -357,7 +356,7 @@ void loop()
 #ifdef DEBUG
   if (millis() >= (serwartezeit + 1000)) {
     SerialOut(millis(), false);
-    SerialOut("\t", false);
+    SerialOut(F("\t"), false);
     SerialOut(isttemp);
     serwartezeit = millis();
   }
@@ -754,7 +753,7 @@ void funktion_temperatur()
 
   if ((modus == NACHGUSS || modus == MANUELL) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
     nachgussruf = true;
-    rufmodus = NACHGUSS;
+    rufmodus = modus;
     modus = BRAUMEISTERRUFALARM;
     y = 0;
     braumeister[y] = BM_ALARM_SIGNAL;        // nur Ruf und weiter mit Regelung
@@ -1452,13 +1451,7 @@ void funktion_abbruch()
   nachgussruf = false;
   pause = 0;
   drehen = sollwert;
-
-  if (millis() >= (abbruchtaste + 5000)) { // länger als 5 Sekunden drücken
-    modus = SETUP_MENU;
-  } else {
-    modus = HAUPTSCHIRM;
-  }
-  // asm volatile ("  jmp 0");       //reset Arduino
+  modus = HAUPTSCHIRM;
 }
 //------------------------------------------------------------------
 
