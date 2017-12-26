@@ -310,7 +310,7 @@ void loop()
       der Temperatur am Schaltpunkt verhindern.
     */
 
-    // setzt Hysteres beim Hochfahren auf 0.5°C unter sollwert
+    // setzt Hysterese beim Hochfahren auf 0.5°C unter sollwert
     if ((isttemp <= (sollwert - 4)) && (heizung == 1)) {
       hysterese = hysteresespeicher;
       hysterese = hysterese / 10;
