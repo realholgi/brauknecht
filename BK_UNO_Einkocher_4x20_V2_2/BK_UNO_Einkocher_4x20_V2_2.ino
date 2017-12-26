@@ -2,7 +2,7 @@
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <Encoder.h>
+#include <ClickEncoder.h> // https://github.com/soligen2010/encoder
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <TimeLib.h>  // http://playground.arduino.cc/code/time
@@ -12,6 +12,7 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h> // https://github.com/bblanchon/ArduinoJson
 #include <FS.h>
+#include <Ticker.h>
 
 #include "config.h"
 #include "global.h"
@@ -19,9 +20,10 @@
 
 LiquidCrystal_I2C lcd(0x27, 20, 4); //# 0x27=proto / 0x3f=box
 OneWire oneWire(oneWirePin);
-DallasTemperature sensors(&oneWire);
+DallasTemperature DS18B20(&oneWire);
 DeviceAddress insideThermometer;
-Encoder encoder(encoderPinA, encoderPinB);
+Ticker ticker;
+ClickEncoder encoder = ClickEncoder(encoderPinA, encoderPinB, tasterPin, ENCODER_STEPS_PER_NOTCH);
 
 ESP8266WebServer HTTP(80);
 
@@ -62,8 +64,7 @@ volatile int oldnumber = 0;
 boolean ButtonPressed = false;
 
 int val = 0;
-int drehen = 0;
-int fuenfmindrehen = 0;
+volatile int drehen;
 
 boolean anfang = true;
 unsigned long altsekunden;
@@ -85,6 +86,8 @@ int n = 0;                                            //Counter Messungserhöhun
 int pause = 0;
 unsigned long abbruchtaste;
 boolean zeigeH = false;
+
+uint32_t lastService = 0;
 
 int sekunden = 0;
 int minuten = 0;
@@ -133,7 +136,7 @@ void setup()
   SerialOut(F("BK Start"));
   SerialOut("\nFW " FIRMWAREVERSION);
   SerialOut(ESP.getSdkVersion());
-    
+
   lcd.init();
   lcd.createChar(8, degC);
   lcd.backlight();
@@ -154,8 +157,10 @@ void setup()
   heizungOn(false);
   beeperOn(false);
 
-  pinMode(tasterPin, INPUT_PULLUP);
-  digitalWrite(tasterPin, HIGH);  // Turn on internal pullup resistor
+  encoder.setButtonHeldEnabled(true);
+  encoder.setDoubleClickEnabled(true);
+  //encoder.setButtonOnPinZeroEnabled(true);
+
 
 #ifndef DEBUG
   for (x = 1; x <= 3; x++) {
@@ -170,15 +175,15 @@ void setup()
 
   lcd.clear();
 
-  sensors.begin();
-  sensors.getAddress(insideThermometer, 0);
-  sensors.setResolution(insideThermometer, RESOLUTION);   // set the resolution to 9 bit
+  DS18B20.begin();
+  DS18B20.getAddress(insideThermometer, 0);
+  DS18B20.setResolution(insideThermometer, RESOLUTION);   // set the resolution to 9 bit
 
   bool _validConf = readConfig();
   if (!_validConf) {
     SerialOut(F("ERROR config corrupted"));
   }
-  
+
   bool _wifiCred = (WiFi.SSID() != "");
   uint8_t c = 0;
   if (!_wifiCred) {
@@ -198,7 +203,7 @@ void setup()
     my_ssid = WIFI_SSID;
     my_psk = WIFI_PSK;
   }
-   
+
   // Hysterese default
   if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
   hysterese = hysteresespeicher;
@@ -211,6 +216,8 @@ void setup()
 
   setupWebserver();
   setupWIFI();
+
+  ticker.attach_ms(1, encoderTicker);
 }
 
 
@@ -224,23 +231,12 @@ void loop()
   minutenwert = minute();
   stunden = hour();
 
-  long number = encoder.read();
-  if (number != oldnumber) {
-    {
-      if (number > oldnumber) { // < > Zeichen ändern = Encoderdrehrichtung ändern
-        ++drehen;
-        fuenfmindrehen = fuenfmindrehen + 5;
-      } else {
-        --drehen;
-        fuenfmindrehen = fuenfmindrehen - 5;
-      }
-      delay(100); // entprellen
-      oldnumber = encoder.read();
-    }
-  }
 
-  sensors.requestTemperatures();
-  sensorwert = sensors.getTempC(insideThermometer);
+
+  DS18B20.requestTemperatures();
+  sensorwert = DS18B20.getTempC(insideThermometer);
+  // sensorwert = DS18B20.getTempCByIndex(0); // getTempCByIndex(0)
+
   if ((sensorwert != isttemp) && (n < 5)) { // Messfehlervermeidung des Sensorwertes
     n++;
   }
@@ -257,7 +253,7 @@ void loop()
   // Sensorfehler 0.00 => Datenleitung oder GND fehlt
 
   if (regelung == REGL_MAISCHEN) {
-    if ((int)isttemp == DEVICE_DISCONNECTED_C || (int)isttemp == 0 || isttemp== 85.0) {
+    if ((int)isttemp == DEVICE_DISCONNECTED_C || (int)isttemp == 0 || isttemp == 85.0) {
       if (!sensorfehler) {
         rufmodus = modus;
         print_lcd("Sensorfehler", RIGHT, 2);
@@ -370,43 +366,52 @@ void loop()
   getButton();
 
   zeigeH = true;
+  encoder.setAccelerationEnabled(true);
+
   switch (modus) {
     case HAUPTSCHIRM:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_hauptschirm();
       break;
 
     case MANUELL:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_temperatur();
       break;
 
     case MAISCHEN:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_maischmenue();
       break;
 
     case NACHGUSS:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_temperatur();
       break;
 
     case SETUP_MENU:
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_setupmenu();
       break;
 
     case SETUP_HYSTERESE:
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_hysterese();
       break;
 
     case SETUP_KOCHSCHWELLE:
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_kochschwelle();
       break;
 
@@ -421,66 +426,77 @@ void loop()
     case EINGABE_RAST_ANZ:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_rastanzahl();
       break;
 
     case EINGABE_MAISCHTEMP:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_maischtemperatur();
       break;
 
     case EINGABE_RAST_TEMP:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_rasteingabe();
       break;
 
     case EINGABE_RAST_ZEIT:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_zeiteingabe();
       break;
 
     case EINGABE_BRAUMEISTERRUF:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_braumeister();
       break;
 
     case EINGABE_ENDTEMP:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_endtempeingabe();
       break;
 
     case AUTO_START:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_startabfrage(AUTO_MAISCHTEMP, "Auto");
       break;
 
     case AUTO_MAISCHTEMP:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_maischtemperaturautomatik();
       break;
 
     case AUTO_RAST_TEMP:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_tempautomatik();
       break;
 
     case AUTO_RAST_ZEIT:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_zeitautomatik();
       break;
 
     case AUTO_ENDTEMP:
       regelung = REGL_MAISCHEN;
       zeigeH = true;
+      encoder.setAccelerationEnabled(true);
       funktion_endtempautomatik();
       break;
 
@@ -496,16 +512,19 @@ void loop()
 
     case KOCHEN:
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_kochzeit();
       break;
 
     case EINGABE_HOPFENGABEN_ANZAHL:
       zeigeH = false;
+      encoder.setAccelerationEnabled(false);
       funktion_anzahlhopfengaben();
       break;
 
     case EINGABE_HOPFENGABEN_ZEIT:
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_hopfengaben();
       break;
 
@@ -529,12 +548,14 @@ void loop()
     case TIMER:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_timer();
       break;
 
     case TIMERLAUF:
       regelung = REGL_AUS;
       zeigeH = false;
+      encoder.setAccelerationEnabled(true);
       funktion_timerlauf();
       break;
 
@@ -547,18 +568,38 @@ void loop()
   wdt_reset();
 }
 
+void encoderTicker() {
+  encoder.service();
+  drehen += encoder.getValue();
+}
+
 boolean getButton()
 {
-  int buttonVoltage = digitalRead(tasterPin);
-  if (buttonVoltage  == HIGH) {
-    ButtonPressed = false;
-    abbruchtaste = millis();
-  } else if (buttonVoltage == LOW) {
-    ButtonPressed = true;
-    if (millis() >= (abbruchtaste + 2000)) {     //Taste 2 Sekunden drücken
-      modus = ABBRUCH;
+  ButtonPressed = false;
+
+  ClickEncoder::Button b = encoder.getButton();
+  if (b != ClickEncoder::Open) {
+    switch (b) {
+      case ClickEncoder::Pressed:
+        break;
+
+      case ClickEncoder::Held:
+        modus = ABBRUCH;
+        break;
+
+      case ClickEncoder::Released:
+        ButtonPressed = false;
+        break;
+      case ClickEncoder::Clicked:
+        ButtonPressed = true;
+        break;
+
+      case ClickEncoder::DoubleClicked:
+        saveConfig();
+        break;
     }
   }
+
   return ButtonPressed;
 }
 
@@ -711,15 +752,6 @@ void funktion_temperatur()
       break;
   }
 
-  //if ((modus == MANUELL) && (isttemp >= sollwert)) { // Manuell -> Sollwert erreicht
-  //  rufmodus = MANUELL;                //Abbruch nach Rufalarm
-  //  modus = BRAUMEISTERRUFALARM;
-  //  regelung = REGL_AUS;
-  //  heizung = false;
-  //  y = 0;
-  //  braumeister[y] = BM_ALARM_SIGNAL;
-  //}
-
   if ((modus == NACHGUSS || modus == MANUELL) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
     nachgussruf = true;
     rufmodus = NACHGUSS;
@@ -744,62 +776,6 @@ void funktion_rastanzahl()
   drehen = constrain(drehen, 1, 5);
   rasten = drehen;
 
-  /*
-    switch (drehen) {
-    case 1:
-      rastTemp[1] = 67;
-      rastZeit[1] = 60;
-      maischtemp = 65;
-      break;
-
-    case 2:
-      rastTemp[1] = 62;
-      rastZeit[1] = 30;
-      rastTemp[2] = 72;
-      rastZeit[2] = 35;
-      maischtemp = 55;
-      break;
-
-    case 3:
-      rastTemp[1] = 43;
-      rastZeit[1] = 20;
-      rastTemp[2] = 62;
-      rastZeit[2] = 30;
-      rastTemp[3] = 72;
-      rastZeit[3] = 30;
-      maischtemp = 45;
-      break;
-
-    case 4:
-      rastTemp[1] = 45;
-      rastZeit[1] = 10;
-      rastTemp[2] = 52;
-      rastZeit[2] = 10;
-      rastTemp[3] = 65;
-      rastZeit[3] = 30;
-      rastTemp[4] = 72;
-      rastZeit[4] = 30;
-      maischtemp = 37;
-      break;
-
-    case 5:
-      rastTemp[1] = 35;
-      rastZeit[1] = 20;
-      rastTemp[2] = 40;
-      rastZeit[2] = 20;
-      rastTemp[3] = 55;
-      rastZeit[3] = 15;
-      rastTemp[4] = 64;
-      rastZeit[4] = 35;
-      rastTemp[5] = 72;
-      rastZeit[5] = 25;
-      maischtemp = 30;
-      break;
-
-    default:
-      ;
-    }
-  */
   printNumI_lcd(rasten, 19, 1);
 
   warte_und_weiter(EINGABE_MAISCHTEMP);
@@ -851,12 +827,12 @@ void funktion_rasteingabe()
 void funktion_zeiteingabe()
 {
   if (anfang) {
-    fuenfmindrehen = rastZeit[x];
+    drehen = rastZeit[x];
     anfang = false;
   }
 
-  fuenfmindrehen = constrain( fuenfmindrehen, 1, 99);
-  rastZeit[x] = fuenfmindrehen;
+  drehen = constrain( drehen, 1, 99);
+  rastZeit[x] = drehen;
 
   print_lcd_minutes(rastZeit[x], RIGHT, 2);
 
@@ -1159,12 +1135,12 @@ void funktion_hysterese()
     print_lcd("Hysterese", LEFT, 0);
     print_lcd("Eingabe", RIGHT, 0);
 
-    fuenfmindrehen = hysteresespeicher;
+    drehen = hysteresespeicher;
     anfang = false;
   }
 
-  fuenfmindrehen = constrain( fuenfmindrehen, 0, 40); //max. 4,0 Sekunden Hysterese
-  hysteresespeicher = fuenfmindrehen;
+  drehen = constrain( drehen, 0, 40); //max. 4,0 Sekunden Hysterese
+  hysteresespeicher = drehen;
 
   printNumF_lcd(float(hysteresespeicher) / 10, RIGHT, 1);
 
@@ -1185,7 +1161,7 @@ void funktion_kochschwelle()
 
   drehen = constrain( drehen, 20, 99);
   kschwelle = drehen;
-
+  
   printNumI_lcd(kschwelle, RIGHT, 1);
 
   if (warte_und_weiter(SETUP_MENU)) {
@@ -1201,12 +1177,12 @@ void funktion_kochzeit()
     print_lcd("Eingabe", RIGHT, 0);
     print_lcd("Zeit", LEFT, 1);
 
-    fuenfmindrehen = kochzeit;
+    drehen = kochzeit;
     anfang = false;
   }
 
-  fuenfmindrehen = constrain( fuenfmindrehen, 20, 180);
-  kochzeit = fuenfmindrehen;
+  drehen = constrain( drehen, 20, 180);
+  kochzeit = drehen;
 
   print_lcd_minutes( kochzeit, RIGHT, 1);
 
@@ -1237,7 +1213,7 @@ void funktion_hopfengaben()
 {
   if (anfang) {
     x = 1;
-    fuenfmindrehen = hopfenZeit[x];
+    drehen = hopfenZeit[x];
     anfang = false;
     lcd.clear();
     print_lcd("Kochen", LEFT, 0);
@@ -1248,15 +1224,15 @@ void funktion_hopfengaben()
   print_lcd(". Hopfengabe", 1, 1);
   print_lcd("nach", LEFT, 2);
 
-  fuenfmindrehen = constrain(fuenfmindrehen, hopfenZeit[(x - 1)] + 5, kochzeit - 5);
-  hopfenZeit[x] = fuenfmindrehen;
+  drehen = constrain(drehen, hopfenZeit[(x - 1)] + 5, kochzeit - 5);
+  hopfenZeit[x] = drehen;
 
   print_lcd_minutes(hopfenZeit[x], RIGHT, 2);
 
   if (warte_und_weiter(modus)) {
     if (x < hopfenanzahl) {
       x++;
-      fuenfmindrehen = hopfenZeit[x];
+      drehen = hopfenZeit[x];
       print_lcd("  ", LEFT, 1);
       print_lcd("   ", 13, 2);
       delay(400);
@@ -1894,17 +1870,18 @@ void handleRoot() {
 }
 
 bool setupWIFI() {
+  WiFi.disconnect();
   WiFi.mode(WIFI_STA);
   WiFi.begin(my_ssid.c_str(), my_psk.c_str());
   MDNS.begin("bk");
 
-  SerialOut(F("Enabling WIFI"));
+  SerialOut(F("\nEnabling WIFI"), false);
   unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
     delay(500);
-    SerialOut(".", false);
+    SerialOut(F("."), false);
   }
-  SerialOut("");
+  SerialOut(F(""));
 
   if (WiFi.status() == WL_CONNECTED) {
     SerialOut(F("WiFi connected"));
@@ -1993,7 +1970,7 @@ bool saveConfig()
   else
   {
     if (isDebugEnabled) {
-        json.printTo(Serial);
+      json.printTo(Serial);
     }
     json.printTo(configFile);
     configFile.close();
@@ -2005,7 +1982,7 @@ bool saveConfig()
 
 bool readConfig()
 {
-  SerialOut(F("mounting FS..."));
+  SerialOut(F("mounting FS..."), false);
 
   if (SPIFFS.begin())
   {
@@ -2109,7 +2086,7 @@ bool readConfig()
           if (json.containsKey("PSK"))
             my_psk = (const char *)json["PSK"];
 
-          SerialOut(F("parsed config:"));
+          SerialOut(F("parsed config:"), true);
           if (isDebugEnabled) {
             json.printTo(Serial);
           }

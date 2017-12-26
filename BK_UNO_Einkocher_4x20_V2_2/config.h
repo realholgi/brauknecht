@@ -6,7 +6,7 @@
 #define DEBUG
 
 #define WIFI_SSID "ssid"
-#define WIFI_PSK "psk"
+#define WIFI_PSK "***password***"
 
 #define FIRMWAREVERSION "3.0.0"
 
@@ -22,6 +22,8 @@ enum PinAssignments {
 #define CFGFILE "/config.json"
 #define Hysterese 0             //int
 #define KOCHSCHWELLE 98             //int 25?
+
+#define ENCODER_STEPS_PER_NOTCH    4   // Change this depending on which encoder is used
 
 #define RESOLUTION 12 // 12bit resolution == 750ms update rate
 
