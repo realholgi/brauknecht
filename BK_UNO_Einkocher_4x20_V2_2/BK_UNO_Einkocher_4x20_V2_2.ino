@@ -110,7 +110,7 @@ float isttemp = 20;                                   //Vorgabe 20 damit Sensorf
 MODUS modus = HAUPTSCHIRM;
 MODUS rufmodus = HAUPTSCHIRM;
 unsigned long rufsignalzeit = 0;
-boolean nachgussruf = false;                          //Signal wenn Nachgusstemp erreicht
+boolean nachgussruf = false;                          //Signal wenn Nachgusstemp oder manuelle Maischtemp  erreicht
 int x = 1;                                            //aktuelle Rast Nummer
 int y = 1;                                            //Übergabewert von x für Braumeisterruf
 int n = 0;                                            //Counter Messungserhöhung zur Fehlervermeidung
@@ -642,7 +642,7 @@ void funktion_maischmenue()
   if (anfang) {
     lcd.clear();
     print_lcd("Automatik", 2, 0);
-    print_lcd("Manuell", 2, 01);
+    print_lcd("Manuell", 2, 1);
     print_lcd("Nachguss", 2, 2);
     drehen = 0;
     anfang = false;
@@ -723,16 +723,16 @@ void funktion_temperatur()
       break;
   }
 
-  if ((modus == MANUELL) && (isttemp >= sollwert)) { // Manuell -> Sollwert erreicht
-    rufmodus = MANUELL;                //Abbruch nach Rufalarm
-    modus = BRAUMEISTERRUFALARM;
-    regelung = REGL_AUS;
-    heizung = false;
-    y = 0;
-    braumeister[y] = BM_ALARM_SIGNAL;
-  }
+  //if ((modus == MANUELL) && (isttemp >= sollwert)) { // Manuell -> Sollwert erreicht
+  //  rufmodus = MANUELL;                //Abbruch nach Rufalarm
+  //  modus = BRAUMEISTERRUFALARM;
+  //  regelung = REGL_AUS;
+  //  heizung = false;
+  //  y = 0;
+  //  braumeister[y] = BM_ALARM_SIGNAL;
+  //}
 
-  if ((modus == NACHGUSS) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
+  if ((modus == NACHGUSS || modus == MANUELL) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
     nachgussruf = true;
     rufmodus = NACHGUSS;
     modus = BRAUMEISTERRUFALARM;
