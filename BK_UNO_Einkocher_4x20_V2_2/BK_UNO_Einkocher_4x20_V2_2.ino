@@ -987,7 +987,7 @@ void funktion_tempautomatik()
     drehen = rastTemp[x];
     anfang = false;
     heizung = true;
-    //wartezeit = millis() + 60000;  // sofort aufheizen
+    wartezeit = millis() - 60000;  // sofort aufheizen
   }
 
   drehen = constrain( drehen, 10, 105);
@@ -1005,7 +1005,7 @@ void funktion_zeitautomatik()
 {
   if (anfang) {
     drehen = rastZeit[x];
-    //wartezeit = millis() + 60000;  // sofort aufheizen
+    wartezeit = millis() - 60000;  // sofort aufheizen
     heizung = true;
   }
 
@@ -1076,7 +1076,7 @@ void funktion_endtempautomatik()
     print_lcd("Auto", LEFT, 0);
     print_lcd("Endtemp", RIGHT, 0);
     drehen = endtemp;    // Zuordnung Encoder
-    //wartezeit = millis() + 60000;  // sofort aufheizen
+    wartezeit = millis() - 60000;  // sofort aufheizen
     heizung = true;
     anfang = false;
   }
