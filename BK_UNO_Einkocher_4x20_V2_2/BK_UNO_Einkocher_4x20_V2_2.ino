@@ -5,52 +5,17 @@
 #include <Encoder.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <TimeLib.h>
-#include <EEPROM.h>
-#include <FS.h>
+#include <TimeLib.h>  // http://playground.arduino.cc/code/time
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h> // https://github.com/bblanchon/ArduinoJson
+#include <FS.h>
+
+#include "config.h"
+#include "global.h"
 #include "html.h"
-
-#define DEBUG
-
-#ifndef ESP8266
-#include <avr/wdt.h>
-#endif
-
-
-#define SSID "eedv"
-#define PASS "***REMOVED***"
-
-#ifdef ESP8266
-enum PinAssignments {
-  encoderPinA = D5,
-  encoderPinB = D6,
-  tasterPin = D7,
-  oneWirePin = D3,
-  heizungPin = D4,
-  beeperPin = D8,
-};
-#else
-enum PinAssignments {
-  encoderPinA = 2,
-  encoderPinB = 3,
-  tasterPin = 5,
-  oneWirePin = 6,
-  heizungPin = 8,
-  beeperPin = 14,
-};
-#endif
-
-#define Hysterese 0             //int
-#define KOCHSCHWELLE 25             //int
-
-#define LEFT 0
-#define RIGHT 9999
-#define CENTER 9998
 
 LiquidCrystal_I2C lcd(0x27, 20, 4); //# 0x27=proto / 0x3f=box
 OneWire oneWire(oneWirePin);
@@ -59,6 +24,9 @@ DeviceAddress insideThermometer;
 Encoder encoder(encoderPinA, encoderPinB);
 
 ESP8266WebServer HTTP(80);
+
+String my_ssid;
+String my_psk;
 
 byte degC[8] = {
   B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
@@ -160,16 +128,19 @@ void setup()
 {
 #ifdef DEBUG
   Serial.begin(115200);
-  Serial.println("BK Start");
 #endif
 
+  SerialOut(F("BK Start"));
+  SerialOut("\nFW " FIRMWAREVERSION);
+  SerialOut(ESP.getSdkVersion());
+    
   lcd.init();
   lcd.createChar(8, degC);
   lcd.backlight();
   lcd.clear();
   lcd.noCursor();
 
-  print_lcd("BK V2.4 - LC2004", LEFT, 0);
+  print_lcd("BK V3.0 - LC2004", LEFT, 0);
   print_lcd("Arduino", LEFT, 1);
   print_lcd(":)", RIGHT, 2);
   print_lcd("realholgi & fg100", RIGHT, 3);
@@ -199,24 +170,42 @@ void setup()
 
   lcd.clear();
 
+  sensors.begin();
   sensors.getAddress(insideThermometer, 0);
-  sensors.setResolution(insideThermometer, 12);   // set the resolution to 9 bit
+  sensors.setResolution(insideThermometer, RESOLUTION);   // set the resolution to 9 bit
 
-  EEPROM.begin(512);
-
-  // Hysterese
-  hysteresespeicher = EEPROM.read(Hysterese);
+  bool _validConf = readConfig();
+  if (!_validConf) {
+    SerialOut(F("ERROR config corrupted"));
+  }
+  
+  bool _wifiCred = (WiFi.SSID() != "");
+  uint8_t c = 0;
+  if (!_wifiCred) {
+    WiFi.begin();
+  }
+  while (!_wifiCred)
+  {
+    if (c > 10)
+      break;
+    SerialOut('.', false);
+    delay(100);
+    c++;
+    _wifiCred = (WiFi.SSID() != "");
+  }
+  if (!_wifiCred) {
+    SerialOut("ERROR no Wifi credentials. Providing default...");
+    my_ssid = WIFI_SSID;
+    my_psk = WIFI_PSK;
+  }
+   
+  // Hysterese default
   if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
-  Serial.print("Hysteresespeicher: ");
-  Serial.println(hysteresespeicher);
   hysterese = hysteresespeicher;
   hysterese = hysterese / 10;
 
-  // Kochschwelle
-  kschwelle = EEPROM.read(KOCHSCHWELLE);
+  // Kochschwelle default
   if (kschwelle > 100 || kschwelle == 0) (kschwelle = KOCHSCHWELLE);
-  Serial.print("Kochschwelle: ");
-  Serial.println(kschwelle);
 
   watchdogSetup();
 
@@ -268,7 +257,7 @@ void loop()
   // Sensorfehler 0.00 => Datenleitung oder GND fehlt
 
   if (regelung == REGL_MAISCHEN) {
-    if ((int)isttemp == -127 || (int)isttemp == 0 ) {
+    if ((int)isttemp == DEVICE_DISCONNECTED_C || (int)isttemp == 0 || isttemp== 85.0) {
       if (!sensorfehler) {
         rufmodus = modus;
         print_lcd("Sensorfehler", RIGHT, 2);
@@ -371,10 +360,9 @@ void loop()
 
 #ifdef DEBUG
   if (millis() >= (serwartezeit + 1000)) {
-    Serial.print(millis());
-    Serial.print("\t");
-    Serial.print(isttemp);
-    Serial.println("");
+    SerialOut(millis(), false);
+    SerialOut("\t", false);
+    SerialOut(isttemp);
     serwartezeit = millis();
   }
 #endif
@@ -756,7 +744,8 @@ void funktion_rastanzahl()
   drehen = constrain(drehen, 1, 5);
   rasten = drehen;
 
-  switch (drehen) {
+  /*
+    switch (drehen) {
     case 1:
       rastTemp[1] = 67;
       rastZeit[1] = 60;
@@ -809,8 +798,8 @@ void funktion_rastanzahl()
 
     default:
       ;
-  }
-
+    }
+  */
   printNumI_lcd(rasten, 19, 1);
 
   warte_und_weiter(EINGABE_MAISCHTEMP);
@@ -951,7 +940,9 @@ void funktion_startabfrage(MODUS naechsterModus, char *title)
     print_lcd("Start ?", CENTER, 2);
   }
 
-  warte_und_weiter(naechsterModus);
+  if (warte_und_weiter(naechsterModus)) {
+    saveConfig();
+  }
 }
 
 void funktion_maischtemperaturautomatik()
@@ -1178,8 +1169,7 @@ void funktion_hysterese()
   printNumF_lcd(float(hysteresespeicher) / 10, RIGHT, 1);
 
   if (warte_und_weiter(SETUP_MENU)) {
-    EEPROM.write(Hysterese, hysteresespeicher);
-    EEPROM.commit();
+    saveConfig();
   }
 }
 
@@ -1199,8 +1189,7 @@ void funktion_kochschwelle()
   printNumI_lcd(kschwelle, RIGHT, 1);
 
   if (warte_und_weiter(SETUP_MENU)) {
-    EEPROM.write(KOCHSCHWELLE, kschwelle);
-    EEPROM.commit();
+    saveConfig();
   }
 }
 
@@ -1906,36 +1895,238 @@ void handleRoot() {
 
 bool setupWIFI() {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(SSID, PASS);
+  WiFi.begin(my_ssid.c_str(), my_psk.c_str());
   MDNS.begin("bk");
 
-  Serial.println(F("Enabling WIFI"));
+  SerialOut(F("Enabling WIFI"));
   unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startTime < 10000) {
     delay(500);
-    Serial.print(".");
+    SerialOut(".", false);
   }
-  Serial.println();
+  SerialOut("");
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F("WiFi connected"));
-    Serial.print(F("IP address: "));
-    Serial.println(WiFi.localIP());
+    SerialOut(F("WiFi connected"));
+    SerialOut(F("IP address: "));
+    SerialOut(WiFi.localIP());
 
-    Serial.print("signal strength (RSSI):");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
+    SerialOut(F("signal strength (RSSI):"), false);
+    SerialOut(WiFi.RSSI(), false);
+    SerialOut(F(" dBm"));
     return true;
   } else {
-    Serial.println(F("Can not connect to WiFi station. Go into AP mode."));
+    SerialOut(F("Can not connect to WiFi station. Go into AP mode."));
     WiFi.mode(WIFI_AP);
 
     delay(10);
 
     WiFi.softAP("bk", "bk");
 
-    Serial.print(F("IP address: "));
-    Serial.println(WiFi.softAPIP());
+    SerialOut(F("IP address: "), false);
+    SerialOut(WiFi.softAPIP());
   }
   return false;
+}
+
+bool saveConfig()
+{
+  SerialOut(F("saving config..."));
+
+  // if SPIFFS is not usable
+  if (!SPIFFS.begin() || !SPIFFS.exists(CFGFILE) ||
+      !SPIFFS.open(CFGFILE, "w"))
+  {
+    SerialOut(F("need to format SPIFFS: "));
+    SPIFFS.end();
+    SPIFFS.begin();
+    SerialOut(SPIFFS.format());
+  }
+
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject &json = jsonBuffer.createObject();
+
+  json["hysteresespeicher"] = hysteresespeicher;
+  json["kschwelle"] = kschwelle;
+  json["rasten"] = rasten;
+
+  json["rastTemp_1"] = rastTemp[1];
+  json["rastZeit_1"] = rastZeit[1];
+  json["rastAlarm_1"] = (int)braumeister[1];
+  json["rastTemp_2"] = rastTemp[2];
+  json["rastZeit_2"] = rastZeit[2];
+  json["rastAlarm_2"] = (int)braumeister[2];
+  json["rastTemp_3"] = rastTemp[3];
+  json["rastZeit_3"] = rastZeit[3];
+  json["rastAlarm_3"] = (int)braumeister[3];
+  json["rastTemp_4"] = rastTemp[4];
+  json["rastZeit_4"] = rastZeit[4];
+  json["rastAlarm_4"] = (int)braumeister[4];
+  json["rastTemp_5"] = rastTemp[5];
+  json["rastZeit_5"] = rastZeit[5];
+  json["rastAlarm_5"] = (int)braumeister[5];
+
+  json["maischtemp"] = maischtemp;
+  json["endtemp"] = endtemp;
+
+  json["kochzeit"] = kochzeit;
+  json["hopfenanzahl"] = hopfenanzahl;
+
+  json["hopfenZeit_1"] = hopfenZeit[1];
+  json["hopfenZeit_2"] = hopfenZeit[2];
+  json["hopfenZeit_3"] = hopfenZeit[3];
+  json["hopfenZeit_4"] = hopfenZeit[4];
+  json["hopfenZeit_5"] = hopfenZeit[5];
+
+  // Store current Wifi credentials
+  json["SSID"] = WiFi.SSID();
+  json["PSK"] = WiFi.psk();
+
+
+  File configFile = SPIFFS.open(CFGFILE, "w+");
+  if (!configFile)
+  {
+    SerialOut(F("failed to open config file for writing"));
+    SPIFFS.end();
+    return false;
+  }
+  else
+  {
+    if (isDebugEnabled) {
+        json.printTo(Serial);
+    }
+    json.printTo(configFile);
+    configFile.close();
+    SPIFFS.end();
+    SerialOut(F("saved successfully"));
+    return true;
+  }
+}
+
+bool readConfig()
+{
+  SerialOut(F("mounting FS..."));
+
+  if (SPIFFS.begin())
+  {
+    SerialOut(F(" mounted!"));
+    if (SPIFFS.exists(CFGFILE))
+    {
+      // file exists, reading and loading
+      SerialOut(F("reading config file"));
+      File configFile = SPIFFS.open(CFGFILE, "r");
+      if (configFile)
+      {
+        SerialOut(F("opened config file"));
+        size_t size = configFile.size();
+        // Allocate a buffer to store contents of the file.
+        std::unique_ptr<char[]> buf(new char[size]);
+
+        configFile.readBytes(buf.get(), size);
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject &json = jsonBuffer.parseObject(buf.get());
+
+        if (json.success())
+        {
+          SerialOut(F("parsed json"));
+          int t = 0;
+          if (json.containsKey("hysteresespeicher"))
+            hysteresespeicher = json["hysteresespeicher"];
+          if (json.containsKey("kschwelle"))
+            kschwelle = json["kschwelle"];
+
+          if (json.containsKey("rasten"))
+            rasten = json["rasten"];
+
+          if (json.containsKey("rastTemp_1"))
+            rastTemp[1] = json["rastTemp_1"];
+          if (json.containsKey("rastZeit_1"))
+            rastZeit[1] = json["rastZeit_1"];
+          if (json.containsKey("rastAlarm_1")) {
+            t = json["rastAlarm_1"];
+            braumeister[1] = (BM_ALARM_MODE)t;
+          }
+          if (json.containsKey("rastTemp_2"))
+            rastTemp[2] = json["rastTemp_2"];
+          if (json.containsKey("rastZeit_2"))
+            rastZeit[2] = json["rastZeit_2"];
+          if (json.containsKey("rastAlarm_2")) {
+            t = json["rastAlarm_2"];
+            braumeister[2] = (BM_ALARM_MODE)t;
+          }
+
+          if (json.containsKey("rastTemp_3"))
+            rastTemp[3] = json["rastTemp_3"];
+          if (json.containsKey("rastZeit_3"))
+            rastZeit[3] = json["rastZeit_3"];
+          if (json.containsKey("rastAlarm_3")) {
+            t = json["rastAlarm_3"];
+            braumeister[3] = (BM_ALARM_MODE)t;
+          }
+
+          if (json.containsKey("rastTemp_4"))
+            rastTemp[4] = json["rastTemp_4"];
+          if (json.containsKey("rastZeit_4"))
+            rastZeit[4] = json["rastZeit_4"];
+          if (json.containsKey("rastAlarm_4")) {
+            t = json["rastAlarm_4"];
+            braumeister[4] = (BM_ALARM_MODE)t;
+          }
+          if (json.containsKey("rastTemp_5"))
+            rastTemp[5] = json["rastTemp_5"];
+          if (json.containsKey("rastZeit_5"))
+            rastZeit[5] = json["rastZeit_5"];
+          if (json.containsKey("rastAlarm_5")) {
+            t = json["rastAlarm_5"];
+            braumeister[5] = (BM_ALARM_MODE)t;
+          }
+
+          if (json.containsKey("maischtemp"))
+            maischtemp = json["maischtemp"];
+
+          if (json.containsKey("endtemp"))
+            endtemp = json["endtemp"];
+
+          if (json.containsKey("kochzeit"))
+            kochzeit = json["kochzeit"];
+
+          if (json.containsKey("hopfenanzahl"))
+            hopfenanzahl = json["hopfenanzahl"];
+
+          if (json.containsKey("hopfenZeit_1"))
+            hopfenZeit[1] = json["hopfenZeit_1"];
+          if (json.containsKey("hopfenZeit_2"))
+            hopfenZeit[2] = json["hopfenZeit_2"];
+          if (json.containsKey("hopfenZeit_3"))
+            hopfenZeit[3] = json["hopfenZeit_3"];
+          if (json.containsKey("hopfenZeit_4"))
+            hopfenZeit[4] = json["hopfenZeit_4"];
+          if (json.containsKey("hopfenZeit_5"))
+            hopfenZeit[5] = json["hopfenZeit_5"];
+
+          if (json.containsKey("SSID"))
+            my_ssid = (const char *)json["SSID"];
+          if (json.containsKey("PSK"))
+            my_psk = (const char *)json["PSK"];
+
+          SerialOut(F("parsed config:"));
+          if (isDebugEnabled) {
+            json.printTo(Serial);
+          }
+          return true;
+        }
+        else
+        {
+          SerialOut(F("ERROR: failed to load json config"));
+          return false;
+        }
+      }
+      SerialOut(F("ERROR: unable to open config file"));
+    }
+  }
+  else
+  {
+    SerialOut(F(" ERROR: failed to mount FS!"));
+    return false;
+  }
 }
