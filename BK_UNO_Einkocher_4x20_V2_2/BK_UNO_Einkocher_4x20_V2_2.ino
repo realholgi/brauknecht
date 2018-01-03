@@ -192,7 +192,7 @@ void setup()
   {
     if (c > 10)
       break;
-    SerialOut(F('.'), false);
+    SerialOut(F("."), false);
     delay(100);
     c++;
     _wifiCred = (WiFi.SSID() != "");
