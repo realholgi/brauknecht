@@ -27,8 +27,8 @@ Ticker ticker;
 ClickEncoder encoder = ClickEncoder(encoderPinA, encoderPinB, tasterPin, ENCODER_STEPS_PER_NOTCH);
 ESP8266WebServer HTTP(80);
 
-String my_ssid;
-String my_psk;
+String my_ssid = WIFI_SSID;
+String my_psk = WIFI_PSK;
 
 byte degC[8] = {
   B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
@@ -38,42 +38,36 @@ byte degC[8] = {
 unsigned long serwartezeit = 0;
 #endif
 
-volatile int number = 0;
-volatile int oldnumber = 0;
-boolean ButtonPressed = false;
+bool ButtonPressed = false;
 
-int val = 0;
 volatile int drehen;
 
-boolean anfang = true;
+bool anfang = true;
 unsigned long altsekunden;
 REGEL_MODE regelung = REGL_AUS;
-boolean heizung = false;
-boolean sensorfehler = false;
+bool heizung = false;
+bool sensorfehler = false;
 float hysterese = 0;
 byte hysteresespeicher = 5;
-unsigned long wartezeit = -60000;
+long wartezeit = -60000;
 float sensorwert;
 float isttemp = 20;                                   //Vorgabe 20 damit Sensorfehler am Anfang nicht anspricht
 MODUS modus = HAUPTSCHIRM;
 MODUS rufmodus = HAUPTSCHIRM;
 unsigned long rufsignalzeit = 0;
-boolean nachgussruf = false;                          //Signal wenn Nachgusstemp oder manuelle Maischtemp  erreicht
+bool nachgussruf = false;                          //Signal wenn Nachgusstemp oder manuelle Maischtemp  erreicht
 int x = 1;                                            //aktuelle Rast Nummer
 int y = 1;                                            //Übergabewert von x für Braumeisterruf
 int n = 0;                                            //Counter Messungserhöhung zur Fehlervermeidung
 int pause = 0;
-boolean zeigeH = false;
-
-uint32_t lastService = 0;
+bool zeigeH = false;
 
 int sekunden = 0;
 int minuten = 0;
 int minutenwert = 0;
 int stunden = 0;
 
-boolean hendi_special = true;
-bool schwelle_erreicht = false;
+bool hendi_special = true;
 byte kschwelle = KOCHSCHWELLE;
 
 //Vorgabewerte zur ersten Einstellung-------------------------------------------
@@ -137,8 +131,6 @@ void setup()
 
   encoder.setButtonHeldEnabled(true);
   encoder.setDoubleClickEnabled(true);
-  //encoder.setButtonOnPinZeroEnabled(true);
-
 
 #ifndef DEBUG
   for (x = 1; x <= 3; x++) {
@@ -192,7 +184,6 @@ void loop()
 
   DS18B20.requestTemperatures();
   sensorwert = DS18B20.getTempC(insideThermometer);
-  // sensorwert = DS18B20.getTempCByIndex(0); // getTempCByIndex(0)
 
   if ((sensorwert != isttemp) && (n < 5)) { // Messfehlervermeidung des Sensorwertes
     n++;
@@ -227,7 +218,7 @@ void loop()
   // Temperaturanzeige Istwert
   if (!sensorfehler) {
     print_lcd("ist ", 10, 3);
-    printNumF_lcd(float(isttemp), 15, 3);
+    printNumF_lcd(isttemp, 15, 3);
     lcd.setCursor(19, 3);
     lcd.write(8);
   } else {
@@ -237,7 +228,7 @@ void loop()
   // Heizregelung
   if (regelung == REGL_MAISCHEN) {
     print_lcd("soll ", 9, 1);
-    printNumF_lcd(int(sollwert), 15, 1);
+    printNumF_lcd(sollwert, 15, 1);
     lcd.setCursor(19, 1);
     lcd.write(8);
 
@@ -247,8 +238,8 @@ void loop()
       beim Umschalten zwischen ein und aus,
       D.h. nach dem Umschalten ist ein weiteres Schalten für 1 min gesperrt.
       Ausnahme ist die Überschreitung des Sollwertes um 0,5°C.
-      Dann wird sofort ausgschaltet.
-      Es soll dadurch das Relaisrattern durch Springen
+      Dann wird sofort ausgeschaltet.
+      Es soll dadurch das Relais-Rattern durch Springen
       der Temperatur am Schaltpunkt verhindern.
     */
 
@@ -533,12 +524,12 @@ void loop()
   wdt_reset();
 }
 
-void encoderTicker() {
+void ICACHE_RAM_ATTR encoderTicker() {
   encoder.service();
   drehen += encoder.getValue();
 }
 
-boolean getButton()
+bool getButton()
 {
   ButtonPressed = false;
 
@@ -562,20 +553,22 @@ boolean getButton()
       case ClickEncoder::DoubleClicked:
         saveConfig();
         break;
+        default:
+            break;
     }
   }
 
   return ButtonPressed;
 }
 
-boolean einmaldruck = false;
+bool einmaldruck = false;
 
-boolean warte_und_weiter(MODUS naechsterModus)
+bool warte_und_weiter(MODUS naechsterModus)
 {
   if (!ButtonPressed) {
     einmaldruck = true;
   }
-  if (einmaldruck == true && ButtonPressed) {
+  if (einmaldruck && ButtonPressed) {
     einmaldruck = false;
     modus = naechsterModus;
     anfang = true;
@@ -643,6 +636,8 @@ void do_menu(MENU p1, MENU p2 = { "", NIX}, MENU p3 = { "", NIX}, MENU p4 = { ""
     case 3:
       rufmodus = p4.modus;
       break;
+
+      default:break;
   }
 }
 
@@ -701,7 +696,7 @@ void funktion_temperatur()
       break;
   }
 
-  if ((modus == NACHGUSS || modus == MANUELL) && (isttemp >= sollwert) && (nachgussruf == false)) { // Nachguss -> Sollwert erreicht
+  if ((modus == NACHGUSS || modus == MANUELL) && (isttemp >= sollwert) && !nachgussruf) { // Nachguss -> Sollwert erreicht
     nachgussruf = true;
     rufmodus = modus;
     modus = BRAUMEISTERRUFALARM;
@@ -744,7 +739,7 @@ void funktion_maischtemperatur()
   maischtemp = drehen;
 
   print_lcd("Maischtemp", LEFT, 1);
-  printNumF_lcd(int(maischtemp), 15, 1);
+  printNumF_lcd(maischtemp, 15, 1);
   lcd.setCursor(19, 1);
   lcd.write(8);
 
@@ -766,7 +761,7 @@ void funktion_rasteingabe()
 
   printNumI_lcd(x, LEFT, 1);
   print_lcd(". Rast", 1, 1);
-  printNumF_lcd(int(rastTemp[x]), 15, 1);
+  printNumF_lcd(rastTemp[x], 15, 1);
   lcd.setCursor(19, 1);
   lcd.write(8);
 
@@ -839,7 +834,7 @@ void funktion_endtempeingabe()
   endtemp = drehen;
 
   print_lcd("Endtemperatur", LEFT, 1);
-  printNumF_lcd(int(endtemp), 15, 1);
+  printNumF_lcd(endtemp, 15, 1);
   lcd.setCursor(19, 1);
   lcd.write(8);
 
@@ -1425,8 +1420,7 @@ void print_lcd_minutes (int value, int x, int y)
   print_lcd(" min", x + 3, y);
 }
 
-#ifdef ESP8266
-void watchdogSetup(void) {
+void watchdogSetup() {
   wdt_enable(WDTO_2S);
 }
 
@@ -1434,38 +1428,13 @@ extern "C" void custom_crash_callback(struct rst_info * rst_info, uint32_t stack
 {
   heizungOn(false);
   beeperOn(true); // beeeeeeeeeeep
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
   while (true);
-}
-#else
-void watchdogSetup(void)
-{
-  cli(); // disable all interrupts
-  wdt_reset(); // reset the WDT timer
-  /*
-    WDTCSR configuration:
-    WDIE = 1: Interrupt Enable
-    WDE = 1: Reset Enable
-    WDP3 = 0 :For 2000ms Time-out
-    WDP2 = 1 :For 2000ms Time-out
-    WDP1 = 1 :For 2000ms Time-out
-    WDP0 = 1 :For 2000ms Time-out
-  */
-  // Enter Watchdog Configuration mode:
-  WDTCSR |= (1 << WDCE) | (1 << WDE);
-  // Set Watchdog settings:
-  WDTCSR = (1 << WDIE) | (1 << WDE) | (0 << WDP3) | (1 << WDP2) | (1 << WDP1) | (1 << WDP0);
-  sei();
+#pragma clang diagnostic pop
 }
 
-ISR(WDT_vect) // Watchdog timer interrupt.
-{
-  heizungOn(false);
-  beeperOn(true); // beeeeeeeeeeep
-  while (true);
-}
-#endif
-
-void beeperOn(boolean value)
+void beeperOn(bool value)
 {
   if (value) {
     digitalWrite(beeperPin, HIGH); // einschalten
@@ -1474,7 +1443,7 @@ void beeperOn(boolean value)
   }
 }
 
-void heizungOn(boolean value)
+void heizungOn(bool value)
 {
   if (value) {
     digitalWrite(heizungPin, LOW);   // einschalten
@@ -1793,15 +1762,15 @@ void handleDataJson() {
 
   JsonArray& all_rast_temp = json.createNestedArray("all_rast_temp");
   all_rast_temp.copyFrom(rastTemp);
-  all_rast_temp.removeAt(0);
+  all_rast_temp.remove(0);
 
   JsonArray& all_rast_zeit = json.createNestedArray("all_rast_zeit");
   all_rast_zeit.copyFrom(rastZeit);
-  all_rast_zeit.removeAt(0);
+  all_rast_zeit.remove(0);
 
   JsonArray& all_hopfen_zeit = json.createNestedArray("all_hopfen_zeit");
   all_hopfen_zeit.copyFrom(hopfenZeit);
-  all_hopfen_zeit.removeAt(0);
+  all_hopfen_zeit.remove(0);
 
   String message = "";
   json.printTo(message);
