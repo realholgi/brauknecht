@@ -10,6 +10,8 @@
 
 #define FIRMWAREVERSION "3.0.0"
 
+#define LCD_I2C_ADR 0x27 //# 0x27=proto / 0x3f=box
+ 
 enum PinAssignments {
   encoderPinA = D5,
   encoderPinB = D6,

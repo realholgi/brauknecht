@@ -1,6 +1,5 @@
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <ClickEncoder.h> // https://github.com/soligen2010/encoder
 #include <OneWire.h>
@@ -18,7 +17,7 @@
 #include "global.h"
 #include "html.h"
 
-LiquidCrystal_I2C lcd(0x27, 20, 4); //# 0x27=proto / 0x3f=box
+LiquidCrystal_I2C lcd(LCD_I2C_ADR, 20, 4);
 OneWire oneWire(oneWirePin);
 DallasTemperature DS18B20(&oneWire);
 DeviceAddress insideThermometer;
@@ -33,17 +32,6 @@ String my_psk;
 byte degC[8] = {
   B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
 };
-
-enum MODUS {HAUPTSCHIRM = 0,
-            MANUELL, NACHGUSS, MAISCHEN,
-            SETUP_MENU, SETUP_HYSTERESE, SETUP_KOCHSCHWELLE,
-            EINGABE_RAST_ANZ, AUTOMATIK = EINGABE_RAST_ANZ, EINGABE_MAISCHTEMP, EINGABE_RAST_TEMP, EINGABE_RAST_ZEIT, EINGABE_BRAUMEISTERRUF, EINGABE_ENDTEMP,
-            AUTO_START, AUTO_MAISCHTEMP, AUTO_RAST_TEMP, AUTO_RAST_ZEIT, AUTO_ENDTEMP,
-            BRAUMEISTERRUFALARM, BRAUMEISTERRUF,
-            KOCHEN, EINGABE_HOPFENGABEN_ANZAHL, EINGABE_HOPFENGABEN_ZEIT, KOCHEN_START_FRAGE, KOCHEN_AUFHEIZEN, KOCHEN_AUTO_LAUF,
-            TIMER, TIMERLAUF,
-            ABBRUCH, ALARMTEST
-           };
 
 enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KOCHEN};
 
@@ -143,7 +131,7 @@ void setup()
   lcd.noCursor();
 
   print_lcd("BK V3.0 - LC2004", LEFT, 0);
-  print_lcd("Arduino", LEFT, 1);
+  print_lcd("ESP8266", LEFT, 1);
   print_lcd(":)", RIGHT, 2);
   print_lcd("realholgi & fg100", RIGHT, 3);
   delay (500);
@@ -183,26 +171,6 @@ void setup()
     SerialOut(F("ERROR config corrupted"));
   }
 
-  bool _wifiCred = (WiFi.SSID() != "");
-  uint8_t c = 0;
-  if (!_wifiCred) {
-    WiFi.begin();
-  }
-  while (!_wifiCred)
-  {
-    if (c > 10)
-      break;
-    SerialOut(F("."), false);
-    delay(100);
-    c++;
-    _wifiCred = (WiFi.SSID() != "");
-  }
-  if (!_wifiCred) {
-    SerialOut(F("ERROR no Wifi credentials. Providing default..."));
-    my_ssid = WIFI_SSID;
-    my_psk = WIFI_PSK;
-  }
-
   // Hysterese default
   if (hysteresespeicher > 40 || hysteresespeicher == 0) (hysteresespeicher = 5);
   hysterese = hysteresespeicher;
@@ -211,14 +179,13 @@ void setup()
   // Kochschwelle default
   if (kschwelle > 100 || kschwelle == 0) (kschwelle = KOCHSCHWELLE);
 
-  watchdogSetup();
-
   setupWebserver();
   setupWIFI();
 
+  watchdogSetup();
+  
   ticker.attach_ms(1, encoderTicker);
 }
-
 
 //loop=============================================================
 void loop()
@@ -562,7 +529,15 @@ void loop()
       zeigeH = true;
       funktion_abbruch();
       break;
+
+    case NIX:
+      regelung = REGL_AUS;
+      zeigeH = false;
+      funktion_nix();
+      break;
   }
+
+  yield();
 
   wdt_reset();
 }
@@ -630,35 +605,59 @@ void menu_zeiger(int pos)
   }
 }
 
-void funktion_hauptschirm()
-{
+void funktion_nix() {
+  // FIXME; but should not happen anyway
+}
+
+void print_if_mode(MENU m, int pos) {
+  if (m.modus != NIX) {
+    print_lcd(m.text, 2, pos);
+  }
+}
+
+void do_menu(MENU p1, MENU p2 = { "", NIX}, MENU p3 = { "", NIX}, MENU p4 = { "", NIX}) {
   if (anfang) {
     lcd.clear();
-    print_lcd("Maischen", 2, 0);
-    print_lcd("Kochen", 2, 1);
-    print_lcd("Timer", 2, 2);
-    print_lcd("Setup", 2, 3);
+    print_if_mode(p1, 0);
+    print_if_mode(p2, 1);
+    print_if_mode(p3, 2);
+    print_if_mode(p4, 3);
     drehen = 0;
     anfang = false;
   }
 
-  drehen = constrain(drehen, 0, 3);
+  int drehen_max = 0;
+  if (p4.modus == NIX) {
+    drehen_max = 3;
+  }
+  if (p3.modus == NIX) {
+    drehen_max = 2;
+  }
+  if (p2.modus == NIX) {
+    drehen_max = 1;
+  }
+  drehen = constrain(drehen, 0, drehen_max);
 
   menu_zeiger(drehen);
   switch (drehen) {
     case 0:
-      rufmodus = MAISCHEN;
+      rufmodus = p1.modus;
       break;
     case 1:
-      rufmodus = KOCHEN;
+      rufmodus = p2.modus;
       break;
     case 2:
-      rufmodus = TIMER;
+      rufmodus = p3.modus;
       break;
     case 3:
-      rufmodus = SETUP_MENU;
+      rufmodus = p4.modus;
       break;
   }
+}
+
+void funktion_hauptschirm()
+{
+  do_menu({"Maischen", MAISCHEN}, {"Kochen", KOCHEN}, {"Timer", TIMER}, {"Setup", SETUP_MENU});
 
   if (warte_und_weiter(rufmodus)) {
     lcd.clear();
@@ -667,29 +666,7 @@ void funktion_hauptschirm()
 
 void funktion_maischmenue()
 {
-  if (anfang) {
-    lcd.clear();
-    print_lcd("Automatik", 2, 0);
-    print_lcd("Manuell", 2, 1);
-    print_lcd("Nachguss", 2, 2);
-    drehen = 0;
-    anfang = false;
-  }
-
-  drehen = constrain(drehen, 0, 2);
-
-  menu_zeiger(drehen);
-  switch (drehen) {
-    case 0:
-      rufmodus = AUTOMATIK ;
-      break;
-    case 1:
-      rufmodus = MANUELL;
-      break;
-    case 2:
-      rufmodus = NACHGUSS;
-      break;
-  }
+  do_menu({"Automatik", AUTOMATIK}, {"Nachguss", NACHGUSS}, {"Manuell", MANUELL});
 
   if (warte_und_weiter(rufmodus)) {
     if (modus == MANUELL) {
@@ -705,25 +682,7 @@ void funktion_maischmenue()
 
 void funktion_setupmenu()
 {
-  if (anfang) {
-    lcd.clear();
-    print_lcd("Kochschwelle", 2, 0);
-    print_lcd("Hysterese", 2, 1);
-    drehen = 0;
-    anfang = false;
-  }
-
-  drehen = constrain(drehen, 0, 1);
-
-  menu_zeiger(drehen);
-  switch (drehen) {
-    case 0:
-      rufmodus = SETUP_KOCHSCHWELLE;
-      break;
-    case 1:
-      rufmodus = SETUP_HYSTERESE;
-      break;
-  }
+  do_menu({"Kochschwelle", SETUP_KOCHSCHWELLE}, {"Hysterese", SETUP_HYSTERESE});
 
   if (warte_und_weiter(rufmodus)) {
     lcd.clear();
@@ -1160,7 +1119,7 @@ void funktion_kochschwelle()
 
   drehen = constrain( drehen, 20, 99);
   kschwelle = drehen;
-  
+
   printNumI_lcd(kschwelle, RIGHT, 1);
 
   if (warte_und_weiter(SETUP_MENU)) {
