@@ -1,5 +1,6 @@
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 
+#include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
 #include <ClickEncoder.h> // https://github.com/soligen2010/encoder
 #include <OneWire.h>
@@ -15,6 +16,7 @@
 
 #include "config.h"
 #include "global.h"
+#include "proto.h"
 #include "html.h"
 
 LiquidCrystal_I2C lcd(LCD_I2C_ADR, 20, 4);
@@ -23,7 +25,6 @@ DallasTemperature DS18B20(&oneWire);
 DeviceAddress insideThermometer;
 Ticker ticker;
 ClickEncoder encoder = ClickEncoder(encoderPinA, encoderPinB, tasterPin, ENCODER_STEPS_PER_NOTCH);
-
 ESP8266WebServer HTTP(80);
 
 String my_ssid;
@@ -32,16 +33,6 @@ String my_psk;
 byte degC[8] = {
   B01000, B10100, B01000, B00111, B01000, B01000, B01000, B00111
 };
-
-enum REGEL_MODE {REGL_AUS = 0, REGL_MAISCHEN, REGL_KOCHEN};
-
-enum BM_ALARM_MODE {BM_ALARM_AUS = 0, BM_ALARM_MIN = BM_ALARM_AUS, BM_ALARM_WAIT, BM_ALARM_SIGNAL, BM_ALARM_MAX = BM_ALARM_SIGNAL};
-
-void funktion_startabfrage(MODUS naechsterModus, char *title);
-boolean warte_und_weiter(MODUS naechsterModus);
-void print_lcd (char *st, int x, int y);
-void printNumI_lcd(int num, int x, int y);
-void printNumF_lcd (double num, int x, int y, byte dec = 1, int length = 0);
 
 #ifdef DEBUG
 unsigned long serwartezeit = 0;
