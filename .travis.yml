@@ -6,8 +6,7 @@ cache:
   directories:
   - "~/.platformio"
 install:
-- pip install -U https://github.com/platformio/platformio-core/archive/develop.zip
-  || true
+- pip install -U https://github.com/platformio/platformio-core/archive/develop.zip || true
 - pio settings set auto_update_platforms true
 - pio settings set auto_update_libraries true
 script:
@@ -19,3 +18,4 @@ deploy:
   file: ".pioenvs/d1_mini/firmware.bin"
   on:
     repo: realholgi/brauknecht
+    all_branches: true
