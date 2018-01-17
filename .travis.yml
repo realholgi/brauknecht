@@ -16,7 +16,7 @@ deploy:
   provider: releases
   api_key:
     secure: Qlu0tNuAua5erys3QFq8vf4z3W3QOlUnu9nCFL/9997er3FEUCF7IbmPcpQfXhcqPj+uVUsE5q4wkGQioReIRtxGEtDp1MNyfOWv8JNhtuYHfwHIxr1N0rmKqTvzbHgTw4Kqqgvp8rAwknKAGcdTO1zY0Wx1tLNqAA2ex0su5/NvOXlrz2Gu/4YeQsSMDonmhpINAmVB72fk3O5HeIDHaxaoU62wViHqVjhSQ1Wqi7TlgLsQfg8LJaSl21SHEOaDosftgPcFHrEDDAIeCIKMPGgSqKO8ey7akBpKVxhFQHCWQP/RP6EMyn/WTBWaNfiuJKmL3PGeVkhiFE2uPij7lOz0WNbkg4rlxVpC4GeKAzpFBWRd3HUgYLR+N8Rg6mLhnQRNHSilxC535bL95YtsLLVQmRRp2nL46ZVSTWAKx3Rj5uLbwiDhq6WyLsu2tYo1SAtJ6UqjRg4ejgkiH0r0/BI3i7IaZ9EHAQHRjI1agB6CtvnoolmmznPA72dLE2xwJQA4pgPakOPAYhLN8RKikTBVcCIfHKaSMD2qzJpt5thl03kF37N8KKep3kq5lc2+RZtlbeDmcmw91X1i3mjaNI+lvNllj3GnOsXghJ0sDkVM0Ik8bqKCjjjRFT/WpEBs62DvrkXiIixsqZ9hbSYiQscLqbMAJECep9Q1y0Z20gA=
-  file: ".pioenvs/d1_mini_stage/firmware.bin"
+  file: ".pioenvs/d1_mini/firmware.bin"
   on:
     repo: realholgi/brauknecht
     branch: wemos_pio
