@@ -19,4 +19,4 @@ deploy:
   file: ".pioenvs/d1_mini/firmware.bin"
   on:
     repo: realholgi/brauknecht
-    branch: wemos_pio
+    branch: master
